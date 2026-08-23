@@ -9,6 +9,7 @@ import {
   StatusBar,
   Image,
   Dimensions,
+  Modal,
   Alert,
 } from 'react-native';
 import { fetchTiffinMenu, checkoutMobileOrder } from './src/services/api';
@@ -21,6 +22,8 @@ export default function App() {
   const [cardIndex, setCardIndex] = useState(0);
   const [cart, setCart] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
+  const [selectedChef, setSelectedChef] = useState(null);
+  const [mealWindow, setMealWindow] = useState('LUNCH');
 
   const sampleKitchens = [
     {
@@ -31,11 +34,16 @@ export default function App() {
       rating: '4.9',
       reviews: '142 reviews',
       fssai: 'FSSAI 21524089000142',
+      bio: 'Authentic coastal homemaker from Malvan. Every masala is ground fresh on a traditional stone daily.',
       tagline: 'Fresh coastal spices ground daily by hand in Ghansoli.',
       dishName: 'Authentic Malvani Fish Thali',
       price: 179,
       photoUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
       avatarEmoji: '👩‍🍳',
+      menu: [
+        { id: 'm1', name: 'Surmai Fry Fish Thali', desc: 'Surmai Fry, Sol Kadhi, 3 Chapati, Rice, Malvani Curry', price: 179 },
+        { id: 'm2', name: 'Prawns Curry Tiffin', desc: 'Prawns Curry, 3 Chapati, Steamed Rice, Salad', price: 169 },
+      ],
     },
     {
       id: 'k2',
@@ -45,25 +53,34 @@ export default function App() {
       rating: '4.8',
       reviews: '98 reviews',
       fssai: 'FSSAI 21524089000198',
+      bio: 'Pure vegetarian homemaker kitchen. Zero onion & garlic options available upon request.',
       tagline: 'Zero onion, zero garlic Jain options available.',
       dishName: 'Kathiyawadi Shuddh Thali',
       price: 149,
       photoUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=800&q=80',
       avatarEmoji: '🥻',
+      menu: [
+        { id: 'm3', name: 'Kathiyawadi Shuddh Thali', desc: 'Ringan Bharta, Sev Tamatar, 4 Phulka, Dal Fry, Jeera Rice', price: 149 },
+        { id: 'm4', name: 'Jain Special Thali', desc: 'Paneer Makhani (No Onion/Garlic), 4 Phulka, Rice, Sweet', price: 159 },
+      ],
     },
     {
       id: 'k3',
       kitchenName: 'Kolhapuri Flavors',
       chefName: 'Pradip Patil',
+      regionalIdentity: '🌶️ KOLHAPURI SPECIALIST',
       rating: '4.9',
       reviews: '210 reviews',
-      regionalIdentity: '🌶️ KOLHAPURI SPECIALIST',
       fssai: 'FSSAI 21524089000210',
+      bio: 'Spicy and flavorful authentic Kolhapuri recipes handed down through generations.',
       tagline: 'Traditional Tambda & Pandhra Rassa cooked slow.',
       dishName: 'Kolhapuri Chicken Tiffin',
       price: 189,
       photoUrl: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&w=800&q=80',
       avatarEmoji: '👨‍🍳',
+      menu: [
+        { id: 'm5', name: 'Kolhapuri Chicken Tiffin', desc: 'Tambda Rassa, Pandhra Rassa, Chicken Sukka, 3 Bhakri', price: 189 },
+      ],
     },
   ];
 
@@ -77,16 +94,22 @@ export default function App() {
     setCardIndex((prev) => (prev - 1 + sampleKitchens.length) % sampleKitchens.length);
   };
 
-  const addToCart = (kitchen) => {
-    setCart([kitchen]);
-    Alert.alert('Added to Cart 🛒', `${kitchen.dishName} from ${kitchen.kitchenName} added!`);
+  const addToCart = (kitchen, item = null) => {
+    const selectedItem = item || {
+      id: kitchen.id,
+      dishName: kitchen.dishName,
+      price: kitchen.price,
+      kitchenName: kitchen.kitchenName,
+    };
+    setCart([selectedItem]);
+    Alert.alert('Added to Cart 🛒', `${selectedItem.dishName} added!`);
   };
 
   const handleCheckout = async () => {
     if (!cart.length) return;
     const item = cart[0];
     const payload = {
-      items: [{ menu_item_id: item.id, chef_id: '9876543210', quantity: 1 }],
+      items: [{ menu_item_id: item.id || 'm1', chef_id: '9876543210', quantity: 1 }],
       delivery_address: { flat_no: 'Flat 402', street_address: 'Sector 8, Ghansoli', phone: '7416767453' },
     };
 
@@ -100,14 +123,14 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FBF9F6" />
 
-      {/* Header Bar */}
+      {/* Header Bar matching Website */}
       <View style={styles.header}>
         <View>
           <Text style={styles.brandTitle}>Homatri</Text>
           <Text style={styles.brandSubtitle}>Home-Cooked Meals in Navi Mumbai</Text>
         </View>
 
-        {/* Cluster Location Chip */}
+        {/* Location Cluster Selector Chip */}
         <TouchableOpacity
           style={styles.clusterBadge}
           onPress={() => setCluster(cluster === 'Ghansoli' ? 'Vashi' : 'Ghansoli')}
@@ -116,7 +139,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Dual Tab Navigation (Kitchens | Community Reels) */}
+      {/* Dual Tab Header matching Website */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'KITCHENS' && styles.tabBtnActive]}
@@ -138,12 +161,16 @@ export default function App() {
           
           {/* HINGE STACKED CARD */}
           <View style={styles.hingeCardContainer}>
-            <View style={styles.hingeCard}>
+            <TouchableOpacity
+              activeOpacity={0.95}
+              onPress={() => setSelectedChef(currentKitchen)}
+              style={styles.hingeCard}
+            >
               
-              {/* Cover Image */}
+              {/* Hero Photo Cover */}
               <Image source={{ uri: currentKitchen.photoUrl }} style={styles.cardImage} />
 
-              {/* Top Floating Badge */}
+              {/* Floating Header Badges */}
               <View style={styles.topBadgeRow}>
                 <Text style={styles.regionBadge}>{currentKitchen.regionalIdentity}</Text>
                 <View style={styles.ratingBadge}>
@@ -151,10 +178,10 @@ export default function App() {
                 </View>
               </View>
 
-              {/* Card Body Details */}
+              {/* Hinge Profile Details Body */}
               <View style={styles.cardBody}>
                 <View style={styles.chefHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.kitchenTitle}>{currentKitchen.kitchenName}</Text>
                     <Text style={styles.chefSubTitle}>By {currentKitchen.chefName}</Text>
                   </div>
@@ -163,7 +190,7 @@ export default function App() {
 
                 <Text style={styles.taglineText}>{currentKitchen.tagline}</Text>
 
-                {/* Dish Highlights */}
+                {/* Dish Special Box */}
                 <View style={styles.dishBox}>
                   <Text style={styles.dishLabel}>TODAY'S SPECIAL TIFFIN</Text>
                   <Text style={styles.dishTitle}>{currentKitchen.dishName}</Text>
@@ -173,7 +200,7 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* Large Action CTA Button */}
+                {/* Prominent Full-Width CTA Button */}
                 <TouchableOpacity
                   style={styles.ctaButton}
                   onPress={() => addToCart(currentKitchen)}
@@ -181,10 +208,12 @@ export default function App() {
                   <Text style={styles.ctaButtonText}>+ ADD TIFFIN TO CART (₹{currentKitchen.price})</Text>
                 </TouchableOpacity>
 
-              </View>
-            </View>
+                <Text style={styles.tapPrompt}>Tap card to expand full menu & homemaker story ➔</Text>
 
-            {/* Hinge Swipe Control Actions */}
+              </View>
+            </TouchableOpacity>
+
+            {/* Hinge Deck Navigation Controls */}
             <View style={styles.swipeActions}>
               <TouchableOpacity style={styles.skipBtn} onPress={handlePrevCard}>
                 <Text style={styles.skipBtnText}>‹ Previous</Text>
@@ -198,7 +227,7 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* SCREEN 2: COMMUNITY REELS */}
+      {/* SCREEN 2: HOMEMAKER STORIES */}
       {activeTab === 'REELS' && (
         <ScrollView style={styles.content}>
           <View style={styles.reelCard}>
@@ -215,7 +244,7 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* SCREEN 3: CART & CHECKOUT */}
+      {/* SCREEN 3: CART & ADDRESSES */}
       {activeTab === 'CART' && (
         <ScrollView style={styles.content}>
           <Text style={styles.sectionHeader}>Delivery Cart & Addresses</Text>
@@ -283,7 +312,70 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* Bottom Tab Bar */}
+      {/* EXPANDED HINGE HOMEMAKER PROFILE MODAL */}
+      <Modal visible={!!selectedChef} animationType="slide" onRequestClose={() => setSelectedChef(null)}>
+        {selectedChef && (
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#FBF9F6' }}>
+            <ScrollView style={{ flex: 1 }}>
+              <Image source={{ uri: selectedChef.photoUrl }} style={{ width: '100%', height: 260 }} />
+              
+              <TouchableOpacity
+                onPress={() => setSelectedChef(null)}
+                style={styles.closeBtn}
+              >
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E1B18' }}>✕</Text>
+              </TouchableOpacity>
+
+              <View style={{ padding: 20, marginTop: -20, backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28 }}>
+                <Text style={styles.regionBadge}>{selectedChef.regionalIdentity}</Text>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E1B18', marginTop: 8 }}>{selectedChef.kitchenName}</Text>
+                <Text style={{ fontSize: 14, color: '#7E766C' }}>By {selectedChef.chefName}</Text>
+                <Text style={{ fontSize: 13, color: '#4A443F', marginTop: 12, lineHeight: 20 }}>{selectedChef.bio}</Text>
+
+                {/* Meal Window Selector */}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                  <TouchableOpacity
+                    style={[styles.windowBtn, mealWindow === 'LUNCH' && styles.windowBtnActive]}
+                    onPress={() => setMealWindow('LUNCH')}
+                  >
+                    <Text style={[styles.windowText, mealWindow === 'LUNCH' && styles.windowTextActive]}>☀️ LUNCH MENU</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.windowBtn, mealWindow === 'DINNER' && styles.windowBtnActive]}
+                    onPress={() => setMealWindow('DINNER')}
+                  >
+                    <Text style={[styles.windowText, mealWindow === 'DINNER' && styles.windowTextActive]}>🌙 DINNER MENU</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Full Menu List */}
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginTop: 20, marginBottom: 10 }}>Available Menu Items</Text>
+                {selectedChef.menu.map((menuItem) => (
+                  <View key={menuItem.id} style={styles.menuItemBox}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1E1B18' }}>{menuItem.name}</Text>
+                      <Text style={{ fontSize: 12, color: '#7E766C', marginTop: 2 }}>{menuItem.desc}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#E53A00', marginTop: 6 }}>₹{menuItem.price}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.addMenuBtn}
+                      onPress={() => {
+                        addToCart(selectedChef, menuItem);
+                        setSelectedChef(null);
+                      }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 }}>+ ADD</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        )}
+      </Modal>
+
+      {/* Bottom Navigation Bar */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('KITCHENS')}>
           <Text style={activeTab === 'KITCHENS' ? styles.tabBarActive : styles.tabBarInactive}>🍱 Explore</Text>
@@ -310,7 +402,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#EBE6DF',
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   brandTitle: { fontSize: 22, fontWeight: 'bold', color: '#1E1B18' },
@@ -347,10 +439,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EBE6DF',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
     elevation: 6,
   },
   cardImage: { width: '100%', height: 230, backgroundColor: '#EBE6DF' },
@@ -360,7 +448,7 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   regionBadge: {
@@ -371,7 +459,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    overflow: 'hidden',
+    alignSelf: 'flex-start',
   },
   ratingBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -381,7 +469,7 @@ const styles = StyleSheet.create({
   },
   ratingText: { fontSize: 12, fontWeight: 'bold', color: '#B45309' },
   cardBody: { padding: 20 },
-  chefHeader: { flexDirection: 'row', justify: 'space-between', alignItems: 'flex-start' },
+  chefHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   kitchenTitle: { fontSize: 20, fontWeight: 'bold', color: '#1E1B18' },
   chefSubTitle: { fontSize: 13, color: '#7E766C', marginTop: 2 },
   avatarEmoji: { fontSize: 32 },
@@ -396,25 +484,20 @@ const styles = StyleSheet.create({
   },
   dishLabel: { fontSize: 9, fontWeight: 'bold', color: '#E53A00', letterSpacing: 0.8 },
   dishTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E1B18', marginTop: 4 },
-  priceRow: { flexDirection: 'row', justify: 'space-between', alignItems: 'center', marginTop: 8 },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   dishPrice: { fontSize: 18, fontWeight: 'bold', color: '#E53A00' },
   perMeal: { fontSize: 12, color: '#7E766C', fontWeight: 'normal' },
   fssaiText: { fontSize: 10, color: '#166534', fontWeight: 'bold' },
   
-  /* LARGE ACCESSIBLE CTA BUTTON */
   ctaButton: {
     backgroundColor: '#E53A00',
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 16,
-    shadowColor: '#E53A00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   ctaButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: 'bold', letterSpacing: 0.5 },
+  tapPrompt: { fontSize: 11, color: '#7E766C', textTransform: 'uppercase', textAlign: 'center', marginTop: 10, fontWeight: 'bold' },
   
   swipeActions: { flexDirection: 'row', gap: 12, marginTop: 16, width: SCREEN_WIDTH - 32 },
   skipBtn: {
@@ -437,6 +520,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nextBtnText: { fontSize: 13, fontWeight: 'bold', color: '#E53A00' },
+
+  /* MODAL EXPANDED PROFILE */
+  closeBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  windowBtn: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 12, alignItems: 'center' },
+  windowBtnActive: { backgroundColor: '#E53A00', borderColor: '#E53A00' },
+  windowText: { fontSize: 12, fontWeight: 'bold', color: '#7E766C' },
+  windowTextActive: { color: '#FFFFFF' },
+  menuItemBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EBE6DF',
+    borderRadius: 16,
+    marginBottom: 10,
+  },
+  addMenuBtn: { backgroundColor: '#E53A00', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
 
   /* REELS CARD */
   reelCard: { backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#EBE6DF' },
