@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,11 +10,14 @@ import {
   Image,
   Dimensions,
   Modal,
+  PanResponder,
+  Animated,
+  TextInput,
   Alert,
 } from 'react-native';
 import { fetchTiffinMenu, checkoutMobileOrder } from './src/services/api';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('KITCHENS'); // KITCHENS, REELS, CART, ACCOUNT
@@ -24,6 +27,16 @@ export default function App() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [selectedChef, setSelectedChef] = useState(null);
   const [mealWindow, setMealWindow] = useState('LUNCH');
+
+  // Reels State
+  const [activeReelIndex, setActiveReelIndex] = useState(0);
+  const [likedReels, setLikedReels] = useState({});
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [comments, setComments] = useState([
+    { id: 'c1', user: 'Priya S.', text: 'The Malvani curry masala smells amazing! Ordering today.' },
+    { id: 'c2', user: 'Rahul M.', text: 'Is this 100% pure veg?' },
+  ]);
+  const [newComment, setNewComment] = useState('');
 
   const sampleKitchens = [
     {
@@ -68,9 +81,9 @@ export default function App() {
       id: 'k3',
       kitchenName: 'Kolhapuri Flavors',
       chefName: 'Pradip Patil',
-      regionalIdentity: '🌶️ KOLHAPURI SPECIALIST',
       rating: '4.9',
       reviews: '210 reviews',
+      regionalIdentity: '🌶️ KOLHAPURI SPECIALIST',
       fssai: 'FSSAI 21524089000210',
       bio: 'Spicy and flavorful authentic Kolhapuri recipes handed down through generations.',
       tagline: 'Traditional Tambda & Pandhra Rassa cooked slow.',
@@ -84,15 +97,76 @@ export default function App() {
     },
   ];
 
+  const sampleReels = [
+    {
+      id: 'r1',
+      chefName: 'Sunita Deshmukh',
+      kitchenName: 'Surmai Konkan Kitchen',
+      avatarEmoji: '👩‍🍳',
+      caption: 'Hand-grinding fresh Malvani masala at 6 AM in Ghansoli! 🌶️🌊',
+      sound: 'Original Sound — Sunita Deshmukh',
+      likes: 1420,
+      photoUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=800&q=80',
+    },
+    {
+      id: 'r2',
+      chefName: 'Meenakshi Joshi',
+      kitchenName: 'Annapurna Shuddh Rasoi',
+      avatarEmoji: '🥻',
+      caption: 'Making soft, fluffy Phulkas for today\'s pure veg Gujarati tiffins! 🌱',
+      sound: 'Gujarati Traditional Folk — Meenakshi',
+      likes: 980,
+      photoUrl: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=800&q=80',
+    },
+  ];
+
+  // PanResponder Gesture Engine for Hinge/Bumble Touch Swipe
+  const pan = useRef(new Animated.ValueXY()).current;
   const currentKitchen = sampleKitchens[cardIndex % sampleKitchens.length];
 
-  const handleNextCard = () => {
-    setCardIndex((prev) => (prev + 1) % sampleKitchens.length);
-  };
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: (e, gestureState) => {
+        if (gestureState.dx > 120) {
+          // Swipe Right ➔ LIKE & ORDER
+          Animated.timing(pan, { toValue: { x: SCREEN_WIDTH + 100, y: gestureState.dy }, duration: 200, useNativeDriver: false }).start(() => {
+            addToCart(currentKitchen);
+            pan.setValue({ x: 0, y: 0 });
+            setCardIndex((prev) => (prev + 1) % sampleKitchens.length);
+          });
+        } else if (gestureState.dx < -120) {
+          // Swipe Left ➔ NOPE / SKIP
+          Animated.timing(pan, { toValue: { x: -SCREEN_WIDTH - 100, y: gestureState.dy }, duration: 200, useNativeDriver: false }).start(() => {
+            pan.setValue({ x: 0, y: 0 });
+            setCardIndex((prev) => (prev + 1) % sampleKitchens.length);
+          });
+        } else {
+          // Spring back to center
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 5, useNativeDriver: false }).start();
+        }
+      },
+    })
+  ).current;
 
-  const handlePrevCard = () => {
-    setCardIndex((prev) => (prev - 1 + sampleKitchens.length) % sampleKitchens.length);
-  };
+  const cardRotation = pan.x.interpolate({
+    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
+    outputRange: ['-14deg', '0deg', '14deg'],
+    extrapolate: 'clamp',
+  });
+
+  const likeOpacity = pan.x.interpolate({
+    inputRange: [0, SCREEN_WIDTH / 4],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const nopeOpacity = pan.x.interpolate({
+    inputRange: [-SCREEN_WIDTH / 4, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   const addToCart = (kitchen, item = null) => {
     const selectedItem = item || {
@@ -119,18 +193,28 @@ export default function App() {
     Alert.alert('Order Created! 🎉', `Order ID: ${res.order_id}\nRedirecting to live driver tracking...`);
   };
 
+  const toggleLikeReel = (id) => {
+    setLikedReels((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleAddComment = () => {
+    if (!newComment.trim()) return;
+    setComments([...comments, { id: `c_${Date.now()}`, user: 'You', text: newComment.trim() }]);
+    setNewComment('');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FBF9F6" />
 
-      {/* Header Bar matching Website */}
+      {/* Header Bar */}
       <View style={styles.header}>
         <View>
           <Text style={styles.brandTitle}>Homatri</Text>
           <Text style={styles.brandSubtitle}>Home-Cooked Meals in Navi Mumbai</Text>
         </View>
 
-        {/* Location Cluster Selector Chip */}
+        {/* Location Cluster Chip */}
         <TouchableOpacity
           style={styles.clusterBadge}
           onPress={() => setCluster(cluster === 'Ghansoli' ? 'Vashi' : 'Ghansoli')}
@@ -139,7 +223,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Dual Tab Header matching Website */}
+      {/* Dual Tab Toggle */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'KITCHENS' && styles.tabBtnActive]}
@@ -151,26 +235,43 @@ export default function App() {
           style={[styles.tabBtn, activeTab === 'REELS' && styles.tabBtnActive]}
           onPress={() => setActiveTab('REELS')}
         >
-          <Text style={[styles.tabText, activeTab === 'REELS' && styles.tabTextActive]}>🎥 Homemaker Stories</Text>
+          <Text style={[styles.tabText, activeTab === 'REELS' && styles.tabTextActive]}>🎥 Homemaker Reels</Text>
         </TouchableOpacity>
       </View>
 
-      {/* SCREEN 1: KITCHENS (HINGE-STYLE SWIPE CARDS) */}
+      {/* SCREEN 1: HINGE / BUMBLE INTERACTIVE TOUCH-SWIPE CARDS */}
       {activeTab === 'KITCHENS' && (
-        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }}>
-          
-          {/* HINGE STACKED CARD */}
-          <View style={styles.hingeCardContainer}>
-            <TouchableOpacity
-              activeOpacity={0.95}
-              onPress={() => setSelectedChef(currentKitchen)}
-              style={styles.hingeCard}
+        <View style={styles.content}>
+          <View style={styles.hingeDeckWrapper}>
+            
+            {/* Interactive Animated Card */}
+            <Animated.View
+              {...panResponder.panHandlers}
+              style={[
+                styles.hingeCard,
+                {
+                  transform: [
+                    { translateX: pan.x },
+                    { translateY: pan.y },
+                    { rotate: cardRotation },
+                  ],
+                },
+              ]}
             >
-              
-              {/* Hero Photo Cover */}
+              {/* Swipe Right LIKE Stamp */}
+              <Animated.View style={[styles.stampBox, styles.likeStamp, { opacity: likeOpacity }]}>
+                <Text style={styles.likeStampText}>❤️ LIKE / ORDER</Text>
+              </Animated.View>
+
+              {/* Swipe Left NOPE Stamp */}
+              <Animated.View style={[styles.stampBox, styles.nopeStamp, { opacity: nopeOpacity }]}>
+                <Text style={styles.nopeStampText}>❌ NOPE / PASS</Text>
+              </Animated.View>
+
+              {/* Cover Image */}
               <Image source={{ uri: currentKitchen.photoUrl }} style={styles.cardImage} />
 
-              {/* Floating Header Badges */}
+              {/* Header Badges */}
               <View style={styles.topBadgeRow}>
                 <Text style={styles.regionBadge}>{currentKitchen.regionalIdentity}</Text>
                 <View style={styles.ratingBadge}>
@@ -178,7 +279,7 @@ export default function App() {
                 </View>
               </View>
 
-              {/* Hinge Profile Details Body */}
+              {/* Card Body */}
               <View style={styles.cardBody}>
                 <View style={styles.chefHeader}>
                   <View style={{ flex: 1 }}>
@@ -190,7 +291,7 @@ export default function App() {
 
                 <Text style={styles.taglineText}>{currentKitchen.tagline}</Text>
 
-                {/* Dish Special Box */}
+                {/* Dish Highlights */}
                 <View style={styles.dishBox}>
                   <Text style={styles.dishLabel}>TODAY'S SPECIAL TIFFIN</Text>
                   <Text style={styles.dishTitle}>{currentKitchen.dishName}</Text>
@@ -200,7 +301,7 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* Prominent Full-Width CTA Button */}
+                {/* Action CTA Button */}
                 <TouchableOpacity
                   style={styles.ctaButton}
                   onPress={() => addToCart(currentKitchen)}
@@ -208,43 +309,61 @@ export default function App() {
                   <Text style={styles.ctaButtonText}>+ ADD TIFFIN TO CART (₹{currentKitchen.price})</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.tapPrompt}>Tap card to expand full menu & homemaker story ➔</Text>
-
+                <Text style={styles.tapPrompt}>👉 Drag Left/Right to Swipe Cards or Tap to Expand ➔</Text>
               </View>
-            </TouchableOpacity>
 
-            {/* Hinge Deck Navigation Controls */}
-            <View style={styles.swipeActions}>
-              <TouchableOpacity style={styles.skipBtn} onPress={handlePrevCard}>
-                <Text style={styles.skipBtnText}>‹ Previous</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.nextBtn} onPress={handleNextCard}>
-                <Text style={styles.nextBtnText}>Next Kitchen ›</Text>
-              </TouchableOpacity>
-            </View>
+            </Animated.View>
 
           </View>
-        </ScrollView>
+        </View>
       )}
 
-      {/* SCREEN 2: HOMEMAKER STORIES */}
+      {/* SCREEN 2: INSTAGRAM / TIKTOK REELS FEED */}
       {activeTab === 'REELS' && (
-        <ScrollView style={styles.content}>
-          <View style={styles.reelCard}>
-            <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=800&q=80' }}
-              style={styles.reelImage}
-            />
-            <View style={styles.reelOverlay}>
-              <Text style={styles.reelChef}>👩‍🍳 Sunita Deshmukh</Text>
-              <Text style={styles.reelTitle}>Hand-Grinding Fresh Malvani Spices in Ghansoli</Text>
-              <Text style={styles.reelSub}>"Every masala is prepared fresh every morning at 6 AM."</Text>
-            </View>
-          </View>
+        <ScrollView style={styles.content} pagingEnabled>
+          {sampleReels.map((reel) => {
+            const isLiked = likedReels[reel.id];
+            return (
+              <View key={reel.id} style={styles.reelContainer}>
+                <Image source={{ uri: reel.photoUrl }} style={styles.reelFullImage} />
+
+                {/* Right Action Icons Bar */}
+                <View style={styles.reelActionsBar}>
+                  <TouchableOpacity onPress={() => toggleLikeReel(reel.id)} style={styles.actionIconBtn}>
+                    <Text style={styles.actionEmoji}>{isLiked ? '❤️' : '🤍'}</Text>
+                    <Text style={styles.actionCount}>{reel.likes + (isLiked ? 1 : 0)}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setCommentOpen(true)} style={styles.actionIconBtn}>
+                    <Text style={styles.actionEmoji}>💬</Text>
+                    <Text style={styles.actionCount}>{comments.length}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => Alert.alert('Share Reel', 'Link copied to clipboard!')} style={styles.actionIconBtn}>
+                    <Text style={styles.actionEmoji}>↪️</Text>
+                    <Text style={styles.actionCount}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Bottom Caption Overlay */}
+                <View style={styles.reelCaptionOverlay}>
+                  <View style={styles.reelChefHeader}>
+                    <Text style={styles.reelAvatar}>{reel.avatarEmoji}</Text>
+                    <Text style={styles.reelChefName}>{reel.chefName}</Text>
+                    <TouchableOpacity style={styles.followBtn}>
+                      <Text style={styles.followText}>Follow</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.reelCaption}>{reel.caption}</Text>
+                  <Text style={styles.reelSound}>🎵 {reel.sound}</Text>
+                </View>
+              </View>
+            );
+          })}
         </ScrollView>
       )}
 
-      {/* SCREEN 3: CART & ADDRESSES */}
+      {/* SCREEN 3: CART & CHECKOUT */}
       {activeTab === 'CART' && (
         <ScrollView style={styles.content}>
           <Text style={styles.sectionHeader}>Delivery Cart & Addresses</Text>
@@ -254,7 +373,6 @@ export default function App() {
               <Text style={styles.cartKitchenName}>{cart[0].kitchenName}</Text>
               <View style={styles.divider} />
               
-              {/* Delivery Address Preview */}
               <View style={styles.addressBox}>
                 <Text style={styles.addressTag}>🏠 HOME ADDRESS</Text>
                 <Text style={styles.addressText}>Flat 402, Sector 8, Ghansoli, Navi Mumbai</Text>
@@ -312,73 +430,48 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* EXPANDED HINGE HOMEMAKER PROFILE MODAL */}
-      <Modal visible={!!selectedChef} animationType="slide" onRequestClose={() => setSelectedChef(null)}>
-        {selectedChef && (
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#FBF9F6' }}>
-            <ScrollView style={{ flex: 1 }}>
-              <Image source={{ uri: selectedChef.photoUrl }} style={{ width: '100%', height: 260 }} />
-              
-              <TouchableOpacity
-                onPress={() => setSelectedChef(null)}
-                style={styles.closeBtn}
-              >
-                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E1B18' }}>✕</Text>
+      {/* SLIDE-UP COMMENT SHEET MODAL FOR REELS */}
+      <Modal visible={commentOpen} animationType="slide" transparent onRequestClose={() => setCommentOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.commentSheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Community Comments ({comments.length})</Text>
+              <TouchableOpacity onPress={() => setCommentOpen(false)}>
+                <Text style={styles.closeSheet}>✕</Text>
               </TouchableOpacity>
+            </View>
 
-              <View style={{ padding: 20, marginTop: -20, backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28 }}>
-                <Text style={styles.regionBadge}>{selectedChef.regionalIdentity}</Text>
-                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E1B18', marginTop: 8 }}>{selectedChef.kitchenName}</Text>
-                <Text style={{ fontSize: 14, color: '#7E766C' }}>By {selectedChef.chefName}</Text>
-                <Text style={{ fontSize: 13, color: '#4A443F', marginTop: 12, lineHeight: 20 }}>{selectedChef.bio}</Text>
-
-                {/* Meal Window Selector */}
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                  <TouchableOpacity
-                    style={[styles.windowBtn, mealWindow === 'LUNCH' && styles.windowBtnActive]}
-                    onPress={() => setMealWindow('LUNCH')}
-                  >
-                    <Text style={[styles.windowText, mealWindow === 'LUNCH' && styles.windowTextActive]}>☀️ LUNCH MENU</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.windowBtn, mealWindow === 'DINNER' && styles.windowBtnActive]}
-                    onPress={() => setMealWindow('DINNER')}
-                  >
-                    <Text style={[styles.windowText, mealWindow === 'DINNER' && styles.windowTextActive]}>🌙 DINNER MENU</Text>
-                  </TouchableOpacity>
+            <ScrollView style={{ flex: 1, paddingVertical: 10 }}>
+              {comments.map((c) => (
+                <View key={c.id} style={styles.commentRow}>
+                  <Text style={styles.commentUser}>{c.user}:</Text>
+                  <Text style={styles.commentText}>{c.text}</Text>
                 </View>
-
-                {/* Full Menu List */}
-                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginTop: 20, marginBottom: 10 }}>Available Menu Items</Text>
-                {selectedChef.menu.map((menuItem) => (
-                  <View key={menuItem.id} style={styles.menuItemBox}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1E1B18' }}>{menuItem.name}</Text>
-                      <Text style={{ fontSize: 12, color: '#7E766C', marginTop: 2 }}>{menuItem.desc}</Text>
-                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#E53A00', marginTop: 6 }}>₹{menuItem.price}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.addMenuBtn}
-                      onPress={() => {
-                        addToCart(selectedChef, menuItem);
-                        setSelectedChef(null);
-                      }}
-                    >
-                      <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 }}>+ ADD</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-
-              </View>
+              ))}
             </ScrollView>
-          </SafeAreaView>
-        )}
+
+            <View style={styles.commentInputRow}>
+              <TextInput
+                value={newComment}
+                onChangeText={setNewComment}
+                placeholder="Add a comment for homemaker..."
+                style={styles.commentInput}
+              />
+              <TouchableOpacity onPress={handleAddComment} style={styles.sendBtn}>
+                <Text style={styles.sendText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Tab Bar */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('KITCHENS')}>
           <Text style={activeTab === 'KITCHENS' ? styles.tabBarActive : styles.tabBarInactive}>🍱 Explore</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('REELS')}>
+          <Text style={activeTab === 'REELS' ? styles.tabBarActive : styles.tabBarInactive}>🎥 Reels</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('CART')}>
           <Text style={activeTab === 'CART' ? styles.tabBarActive : styles.tabBarInactive}>
@@ -428,10 +521,10 @@ const styles = StyleSheet.create({
   tabBtnActive: { backgroundColor: '#FFF5F0' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#7E766C' },
   tabTextActive: { color: '#E53A00', fontWeight: 'bold' },
-  content: { flex: 1, padding: 16 },
+  content: { flex: 1 },
   
-  /* HINGE STACKED CARD STYLES */
-  hingeCardContainer: { marginTop: 4, alignItems: 'center' },
+  /* HINGE STACKED CARD & GESTURE STAMPS */
+  hingeDeckWrapper: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   hingeCard: {
     width: SCREEN_WIDTH - 32,
     backgroundColor: '#FFFFFF',
@@ -441,6 +534,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     elevation: 6,
   },
+  stampBox: {
+    position: 'absolute',
+    top: 40,
+    zIndex: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 3,
+  },
+  likeStamp: { right: 20, borderColor: '#166534', backgroundColor: 'rgba(230, 244, 234, 0.9)' },
+  likeStampText: { color: '#166534', fontWeight: 'extrabold', fontSize: 16 },
+  nopeStamp: { left: 20, borderColor: '#991B1B', backgroundColor: 'rgba(254, 226, 226, 0.9)' },
+  nopeStampText: { color: '#991B1B', fontWeight: 'extrabold', fontSize: 16 },
+
   cardImage: { width: '100%', height: 230, backgroundColor: '#EBE6DF' },
   topBadgeRow: {
     position: 'absolute',
@@ -459,7 +566,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    alignSelf: 'flex-start',
   },
   ratingBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -498,68 +604,40 @@ const styles = StyleSheet.create({
   },
   ctaButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: 'bold', letterSpacing: 0.5 },
   tapPrompt: { fontSize: 11, color: '#7E766C', textTransform: 'uppercase', textAlign: 'center', marginTop: 10, fontWeight: 'bold' },
-  
-  swipeActions: { flexDirection: 'row', gap: 12, marginTop: 16, width: SCREEN_WIDTH - 32 },
-  skipBtn: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#EBE6DF',
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  skipBtnText: { fontSize: 13, fontWeight: 'bold', color: '#7E766C' },
-  nextBtn: {
-    flex: 1,
-    backgroundColor: '#FFF5F0',
-    borderWidth: 1,
-    borderColor: '#FFD4C2',
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  nextBtnText: { fontSize: 13, fontWeight: 'bold', color: '#E53A00' },
 
-  /* MODAL EXPANDED PROFILE */
-  closeBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  windowBtn: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 12, alignItems: 'center' },
-  windowBtnActive: { backgroundColor: '#E53A00', borderColor: '#E53A00' },
-  windowText: { fontSize: 12, fontWeight: 'bold', color: '#7E766C' },
-  windowTextActive: { color: '#FFFFFF' },
-  menuItemBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#EBE6DF',
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  addMenuBtn: { backgroundColor: '#E53A00', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  /* INSTAGRAM / TIKTOK REELS FEED STYLES */
+  reelContainer: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 170, backgroundColor: '#000000', position: 'relative' },
+  reelFullImage: { width: '100%', height: '100%', opacity: 0.9 },
+  reelActionsBar: { position: 'absolute', right: 16, bottom: 90, alignItems: 'center', gap: 20 },
+  actionIconBtn: { alignItems: 'center' },
+  actionEmoji: { fontSize: 28 },
+  actionCount: { color: '#FFFFFF', fontSize: 11, fontWeight: 'bold', marginTop: 2 },
+  reelCaptionOverlay: { position: 'absolute', left: 16, bottom: 20, right: 80 },
+  reelChefHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reelAvatar: { fontSize: 24 },
+  reelChefName: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 },
+  followBtn: { backgroundColor: '#E53A00', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  followText: { color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' },
+  reelCaption: { color: '#FFFFFF', fontSize: 13, marginTop: 6, lineHeight: 18 },
+  reelSound: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 6, fontWeight: 'bold' },
 
-  /* REELS CARD */
-  reelCard: { backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#EBE6DF' },
-  reelImage: { width: '100%', height: 360 },
-  reelOverlay: { padding: 18 },
-  reelChef: { fontSize: 12, fontWeight: 'bold', color: '#E53A00' },
-  reelTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginTop: 4 },
-  reelSub: { fontSize: 12, color: '#7E766C', marginTop: 4 },
+  /* COMMENT SHEET MODAL STYLES */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  commentSheet: { height: 380, backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#EBE6DF', pb: 10 },
+  sheetTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E1B18' },
+  closeSheet: { fontSize: 18, fontWeight: 'bold', color: '#7E766C' },
+  commentRow: { flexDirection: 'row', gap: 6, marginVertical: 6 },
+  commentUser: { fontWeight: 'bold', fontSize: 12, color: '#E53A00' },
+  commentText: { fontSize: 12, color: '#1E1B18', flex: 1 },
+  commentInputRow: { flexDirection: 'row', gap: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#EBE6DF' },
+  commentInput: { flex: 1, borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 14, px: 12, py: 8, fontSize: 12 },
+  sendBtn: { backgroundColor: '#E53A00', paddingHorizontal: 16, borderRadius: 14, justifyContent: 'center' },
+  sendText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 },
 
-  /* CART & ACCOUNT CARDS */
-  sectionHeader: { fontSize: 20, fontWeight: 'bold', color: '#1E1B18', marginBottom: 16 },
-  cartCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EBE6DF' },
+  /* CART & ACCOUNT STYLES */
+  sectionHeader: { fontSize: 20, fontWeight: 'bold', color: '#1E1B18', margin: 16 },
+  cartCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EBE6DF', margin: 16 },
   cartDishTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E1B18' },
   cartKitchenName: { fontSize: 13, color: '#7E766C', marginTop: 2 },
   divider: { height: 1, backgroundColor: '#EBE6DF', marginVertical: 14 },
@@ -574,14 +652,14 @@ const styles = StyleSheet.create({
   totalPayVal: { fontSize: 20, fontWeight: 'bold', color: '#E53A00' },
   checkoutBtn: { backgroundColor: '#E53A00', paddingVertical: 16, borderRadius: 18, alignItems: 'center', marginTop: 16 },
   checkoutBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' },
-  emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF' },
+  emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF', margin: 16 },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginTop: 12 },
   emptySub: { fontSize: 12, color: '#7E766C', marginTop: 4 },
-  trackingCard: { marginTop: 16, backgroundColor: '#E6F4EA', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: '#A8DADC' },
+  trackingCard: { margin: 16, backgroundColor: '#E6F4EA', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: '#A8DADC' },
   trackingStatus: { fontSize: 13, fontWeight: 'bold', color: '#1E4620' },
   trackingSub: { fontSize: 12, color: '#2D6A4F', marginTop: 4 },
-  accountProfileCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF' },
+  accountProfileCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF', margin: 16 },
   profileEmoji: { fontSize: 54 },
   profileName: { fontSize: 20, fontWeight: 'bold', color: '#1E1B18', marginTop: 8 },
   profilePhone: { fontSize: 13, color: '#7E766C', marginTop: 2 },
