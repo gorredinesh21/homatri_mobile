@@ -184,7 +184,7 @@ export default function App() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.kitchenTitle}>{currentKitchen.kitchenName}</Text>
                     <Text style={styles.chefSubTitle}>By {currentKitchen.chefName}</Text>
-                  </div>
+                  </View>
                   <Text style={styles.avatarEmoji}>{currentKitchen.avatarEmoji}</Text>
                 </View>
 
