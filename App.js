@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,7 +15,12 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { fetchTiffinMenu, checkoutMobileOrder } from './src/services/api';
+import {
+  fetchTiffinMenu,
+  checkoutMobileOrder,
+  registerMobileUser,
+  loginMobileUser,
+} from './src/services/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,8 +31,17 @@ export default function App() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [mealWindowFilter, setMealWindowFilter] = useState('ALL');
 
-  // User Profile State
+  // User Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userPhone, setUserPhone] = useState('7416767453');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('SIGN_UP'); // "SIGN_UP" or "LOG_IN"
+  const [authPhoneInput, setAuthPhoneInput] = useState('');
+  const [authEmailInput, setAuthEmailInput] = useState('');
+  const [authPasswordInput, setAuthPasswordInput] = useState('');
+  const [authNameInput, setAuthNameInput] = useState('');
 
   // Cart & Address State
   const [cart, setCart] = useState([]);
@@ -50,7 +64,7 @@ export default function App() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [paymentScreenOpen, setPaymentScreenOpen] = useState(false);
 
-  // Reels State
+  // Reels & Comments State
   const [likedReels, setLikedReels] = useState({});
 
   const sampleKitchens = [
@@ -151,6 +165,45 @@ export default function App() {
     setIsBulkModalOpen(true);
   };
 
+  const handleSignUpSubmit = async () => {
+    if (!authPhoneInput || !authEmailInput || !authPasswordInput) {
+      Alert.alert('Error', 'Phone, Email, and Password are mandatory.');
+      return;
+    }
+    try {
+      await registerMobileUser({
+        phone: authPhoneInput,
+        email: authEmailInput,
+        password: authPasswordInput,
+        fullName: authNameInput,
+      });
+      setUserPhone(authPhoneInput);
+      setUserEmail(authEmailInput);
+      setUserName(authNameInput || 'Customer');
+      setIsAuthenticated(true);
+      setIsAuthModalOpen(false);
+      Alert.alert('Account Created! 🎉', 'You are now signed in to Homatri.');
+    } catch (e) {
+      Alert.alert('Sign Up Error', e.message || 'Registration failed.');
+    }
+  };
+
+  const handleLogInSubmit = async () => {
+    if (!authPhoneInput || !authPasswordInput) {
+      Alert.alert('Error', 'Phone and Password are required.');
+      return;
+    }
+    try {
+      await loginMobileUser({ phone: authPhoneInput, password: authPasswordInput });
+      setUserPhone(authPhoneInput);
+      setIsAuthenticated(true);
+      setIsAuthModalOpen(false);
+      Alert.alert('Welcome Back! 👋', 'Signed in successfully.');
+    } catch (e) {
+      Alert.alert('Log In Error', e.message || 'Invalid credentials.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FBF9F6" />
@@ -161,12 +214,21 @@ export default function App() {
           <Text style={styles.brandTitle}>Homatri</Text>
           <Text style={styles.brandSubtitle}>Home-Cooked Meals in Navi Mumbai</Text>
         </View>
-        <TouchableOpacity
-          style={styles.clusterBadge}
-          onPress={() => setCluster(cluster === 'Ghansoli' ? 'Vashi' : 'Ghansoli')}
-        >
-          <Text style={styles.clusterText}>📍 {cluster} ▾</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.clusterBadge}
+            onPress={() => setCluster(cluster === 'Ghansoli' ? 'Vashi' : 'Ghansoli')}
+          >
+            <Text style={styles.clusterText}>📍 {cluster} ▾</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.authHeaderBtn}
+            onPress={() => setIsAuthModalOpen(true)}
+          >
+            <Text style={styles.authHeaderBtnText}>{isAuthenticated ? '👤 Profile' : '🔑 Sign In'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Dual Tab Header */}
@@ -188,8 +250,6 @@ export default function App() {
       {/* SCREEN 1: KITCHENS DISCOVERY */}
       {activeTab === 'KITCHENS' && (
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }}>
-          
-          {/* Serving Window Filter Bar */}
           <View style={styles.servingFilterBar}>
             {['ALL', 'LUNCH', 'DINNER'].map((win) => (
               <TouchableOpacity
@@ -316,11 +376,56 @@ export default function App() {
           <Text style={styles.sectionHeader}>Customer Account</Text>
           <View style={styles.accountProfileCard}>
             <Text style={styles.profileEmoji}>🍱</Text>
-            <Text style={styles.profileName}>Dinesh Chandan</Text>
+            <Text style={styles.profileName}>{userName || 'Dinesh Chandan'}</Text>
+            <Text style={{ fontSize: 13, color: '#7E766C', marginTop: 2 }}>+91 {userPhone}</Text>
             <Text style={styles.verifiedBadge}>✓ VERIFIED MEMBER</Text>
           </View>
         </ScrollView>
       )}
+
+      {/* AUTH MODAL (SEPARATE SIGN_UP vs LOG_IN) */}
+      <Modal visible={isAuthModalOpen} animationType="slide" transparent onRequestClose={() => setIsAuthModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.commentSheet}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sheetTitle}>{authMode === 'SIGN_UP' ? 'Create Your Account 🍱' : 'Welcome Back 👋'}</Text>
+              <TouchableOpacity onPress={() => setIsAuthModalOpen(false)}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {authMode === 'SIGN_UP' ? (
+              <View style={{ gap: 10 }}>
+                <TextInput value={authPhoneInput} onChangeText={setAuthPhoneInput} placeholder="10-Digit Mobile Number *" keyboardType="phone-pad" style={styles.authInput} />
+                <TextInput value={authEmailInput} onChangeText={setAuthEmailInput} placeholder="Email Address *" keyboardType="email-address" style={styles.authInput} />
+                <TextInput value={authPasswordInput} onChangeText={setAuthPasswordInput} placeholder="Create Password *" secureTextEntry style={styles.authInput} />
+                <TextInput value={authNameInput} onChangeText={setAuthNameInput} placeholder="Full Name (Optional)" style={styles.authInput} />
+
+                <TouchableOpacity style={styles.checkoutBtn} onPress={handleSignUpSubmit}>
+                  <Text style={styles.checkoutBtnText}>Create Account & Sign Up</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setAuthMode('LOG_IN')} style={{ marginTop: 10, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, color: '#E53A00', fontWeight: 'bold' }}>Already have an account? Log In</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                <TextInput value={authPhoneInput} onChangeText={setAuthPhoneInput} placeholder="10-Digit Mobile Number *" keyboardType="phone-pad" style={styles.authInput} />
+                <TextInput value={authPasswordInput} onChangeText={setAuthPasswordInput} placeholder="Enter Password *" secureTextEntry style={styles.authInput} />
+
+                <TouchableOpacity style={styles.checkoutBtn} onPress={handleLogInSubmit}>
+                  <Text style={styles.checkoutBtnText}>Log In to Homatri</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setAuthMode('SIGN_UP')} style={{ marginTop: 10, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, color: '#E53A00', fontWeight: 'bold' }}>Don't have an account? Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* TARGETED CHEF BULK CATERING MODAL */}
       <Modal visible={isBulkModalOpen} animationType="slide" transparent onRequestClose={() => setIsBulkModalOpen(false)}>
@@ -370,8 +475,10 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingVertical: 14, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderColor: '#EBE6DF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   brandTitle: { fontSize: 22, fontWeight: 'bold', color: '#1E1B18' },
   brandSubtitle: { fontSize: 11, color: '#7E766C', marginTop: 1 },
-  clusterBadge: { backgroundColor: '#FFF5F0', borderWidth: 1, borderColor: '#FFD4C2', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  clusterText: { fontSize: 12, fontWeight: 'bold', color: '#E53A00' },
+  clusterBadge: { backgroundColor: '#FFF5F0', borderWidth: 1, borderColor: '#FFD4C2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  clusterText: { fontSize: 11, fontWeight: 'bold', color: '#E53A00' },
+  authHeaderBtn: { backgroundColor: '#1E1B18', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  authHeaderBtnText: { fontSize: 11, fontWeight: 'bold', color: '#FFFFFF' },
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderColor: '#EBE6DF', paddingHorizontal: 12, paddingVertical: 6 },
   tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12 },
   tabBtnActive: { backgroundColor: '#FFF5F0' },
@@ -441,6 +548,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   commentSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
   sheetTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E1B18', marginBottom: 12 },
+  authInput: { borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, backgroundColor: '#FBF9F6' },
   countChip: { paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 12 },
   countChipActive: { backgroundColor: '#E53A00', borderColor: '#E53A00' },
   countChipText: { fontSize: 12, fontWeight: 'bold', color: '#7E766C' },
