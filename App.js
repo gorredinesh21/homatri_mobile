@@ -28,7 +28,6 @@ export default function App() {
 
   // User Profile State
   const [userPhone, setUserPhone] = useState('7416767453');
-  const [isPhoneSaved, setIsPhoneSaved] = useState(false);
 
   // Cart & Address State
   const [cart, setCart] = useState([]);
@@ -42,11 +41,10 @@ export default function App() {
   ]);
   const [selectedAddressId, setSelectedAddressId] = useState('addr_1');
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [newFlatNo, setNewFlatNo] = useState('');
-  const [newStreet, setNewStreet] = useState('');
 
   // Bulk Catering Modal State
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [targetChefName, setTargetChefName] = useState(null); // null = Broadcast to All, String = Targeted Chef
   const [bulkGuestCount, setBulkGuestCount] = useState(25);
 
   // Order & Payment State
@@ -56,11 +54,6 @@ export default function App() {
   // Reels & Comments State
   const [likedReels, setLikedReels] = useState({});
   const [commentOpen, setCommentOpen] = useState(false);
-  const [comments, setComments] = useState([
-    { id: 'c1', user: 'Priya S.', text: 'The Malvani curry masala smells amazing! Ordering today.' },
-    { id: 'c2', user: 'Rahul M.', text: 'Is this 100% pure veg?' },
-  ]);
-  const [newComment, setNewComment] = useState('');
 
   const sampleKitchens = [
     {
@@ -155,39 +148,21 @@ export default function App() {
     Alert.alert('Added to Cart 🛒', `${item.name || item.dishName} added!`);
   };
 
-  const processPayment = async () => {
-    const payload = {
-      items: [{ menu_item_id: cart[0]?.id || 'm1', chef_id: '9876543210', quantity: 1 }],
-      delivery_address: { flat_no: 'Flat 402', street_address: 'Sector 8, Ghansoli', phone: userPhone },
-    };
-    const res = await checkoutMobileOrder(payload);
-    setActiveOrder(res);
-    setCart([]);
-    setPaymentScreenOpen(false);
-    setActiveTab('CART');
-    Alert.alert('Order Confirmed! 🎉', `Order ID: ${res.order_id}\nTracking delivery live!`);
+  const openGlobalBulkModal = () => {
+    setTargetChefName(null); // Broadcast to All Kitchens
+    setIsBulkModalOpen(true);
   };
 
-  const handleAddAddress = () => {
-    if (!newFlatNo.trim() || !newStreet.trim()) return;
-    const newAddr = {
-      id: `addr_${Date.now()}`,
-      addressType: 'HOME',
-      fullAddress: `${newFlatNo.trim()}, ${newStreet.trim()}, ${cluster}`,
-      phone: userPhone,
-    };
-    setSavedAddresses([newAddr, ...savedAddresses]);
-    setSelectedAddressId(newAddr.id);
-    setNewFlatNo('');
-    setNewStreet('');
-    setIsAddressModalOpen(false);
+  const openTargetedBulkModal = (chefName) => {
+    setTargetChefName(chefName); // Targeted Chef Bulk Request
+    setIsBulkModalOpen(true);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FBF9F6" />
 
-      {/* Header Bar matching Website */}
+      {/* Header Bar */}
       <View style={styles.header}>
         <View>
           <Text style={styles.brandTitle}>Homatri</Text>
@@ -201,7 +176,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Dual Tab Header matching Website */}
+      {/* Dual Tab Header */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'KITCHENS' && styles.tabBtnActive]}
@@ -221,7 +196,7 @@ export default function App() {
       {activeTab === 'KITCHENS' && (
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }}>
           
-          {/* Serving Window Filter Bar matching Website */}
+          {/* Serving Window Filter Bar */}
           <View style={styles.servingFilterBar}>
             {['ALL', 'LUNCH', 'DINNER'].map((win) => (
               <TouchableOpacity
@@ -236,9 +211,9 @@ export default function App() {
             ))}
           </View>
 
-          {/* Prominent Bulk Catering Banner Button matching Website */}
-          <TouchableOpacity style={styles.bulkBannerBtn} onPress={() => setIsBulkModalOpen(true)}>
-            <Text style={styles.bulkBannerText}>📦 Request Bulk Catering for Events (10–500 Guests) ➔</Text>
+          {/* 1. GLOBAL LOCALITY BROADCAST BULK BUTTON */}
+          <TouchableOpacity style={styles.globalBulkBannerBtn} onPress={openGlobalBulkModal}>
+            <Text style={styles.globalBulkBannerText}>🌐 Broadcast Bulk Catering Request to All Kitchens in {cluster} ➔</Text>
           </TouchableOpacity>
 
           {/* HINGE / TINDER CARD DECK */}
@@ -250,7 +225,6 @@ export default function App() {
                 { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate: cardRotation }] },
               ]}
             >
-              {/* Photo Dots Bar */}
               <View style={styles.photoDotsRow}>
                 {currentKitchen.photos.map((_, i) => (
                   <View key={i} style={[styles.photoDot, photoIndex === i && styles.photoDotActive]} />
@@ -278,12 +252,15 @@ export default function App() {
 
                 <Text style={styles.bioText}>{currentKitchen.bio}</Text>
 
-                {/* Reels Jump Link */}
-                <TouchableOpacity style={styles.reelsJumpBtn} onPress={() => setActiveTab('REELS')}>
-                  <Text style={styles.reelsJumpText}>🎥 Watch {currentKitchen.chefName}'s Kitchen Reels ➔</Text>
+                {/* 2. TARGETED CHEF BULK ORDER BUTTON ON CARD */}
+                <TouchableOpacity
+                  style={styles.targetedChefBulkBtn}
+                  onPress={() => openTargetedBulkModal(currentKitchen.chefName)}
+                >
+                  <Text style={styles.targetedChefBulkText}>📦 Request Bulk Catering from {currentKitchen.chefName} ➔</Text>
                 </TouchableOpacity>
 
-                {/* Dish Menu Items List */}
+                {/* Menu Items List */}
                 <Text style={styles.menuHeaderTitle}>Available Menu Items</Text>
                 {currentKitchen.menu.map((item) => (
                   <View key={item.id} style={styles.dishListItem}>
@@ -325,16 +302,13 @@ export default function App() {
             <View style={styles.cartCard}>
               <Text style={styles.cartDishTitle}>{cart[0].name || cart[0].dishName}</Text>
               <View style={styles.divider} />
-              
               <Text style={styles.addressHeaderLabel}>DELIVERY ADDRESS</Text>
               <Text style={styles.addressText}>{savedAddresses[0].fullAddress}</Text>
-
               <View style={styles.divider} />
               <View style={styles.priceLine}>
                 <Text style={styles.priceLineLabel}>Total Payable:</Text>
                 <Text style={styles.totalPayVal}>₹{cart[0].price + 30}</Text>
               </View>
-
               <TouchableOpacity style={styles.checkoutBtn} onPress={() => setPaymentScreenOpen(true)}>
                 <Text style={styles.checkoutBtnText}>PROCEED TO PAY (₹{cart[0].price + 30})</Text>
               </TouchableOpacity>
@@ -343,12 +317,6 @@ export default function App() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyEmoji}>🛒</Text>
               <Text style={styles.emptyTitle}>Your cart is empty</Text>
-            </View>
-          )}
-
-          {activeOrder && (
-            <View style={styles.trackingCard}>
-              <Text style={styles.trackingStatus}>🟢 ORDER ACTIVE: {activeOrder.order_id}</Text>
             </View>
           )}
         </ScrollView>
@@ -366,11 +334,13 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* BULK CATERING MODAL */}
+      {/* DUAL BULK CATERING MODAL (GLOBAL vs TARGETED) */}
       <Modal visible={isBulkModalOpen} animationType="slide" transparent onRequestClose={() => setIsBulkModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.commentSheet}>
-            <Text style={styles.sheetTitle}>📦 Event Bulk Catering Quote Calculator</Text>
+            <Text style={styles.sheetTitle}>
+              {targetChefName ? `📦 Bulk Quote for ${targetChefName}` : `🌐 Broadcast Bulk Quote to All Kitchens (${cluster})`}
+            </Text>
             <Text style={{ fontSize: 13, color: '#7E766C' }}>Number of Guests: {bulkGuestCount} People</Text>
             
             <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
@@ -383,24 +353,14 @@ export default function App() {
 
             <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#E53A00' }}>Total Estimated Quote: ₹{bulkGuestCount * 149}</Text>
             
-            <TouchableOpacity style={styles.checkoutBtn} onPress={() => { setIsBulkModalOpen(false); Alert.alert('Quote Request Sent!', 'Our team will call you shortly.'); }}>
+            <TouchableOpacity style={styles.checkoutBtn} onPress={() => { setIsBulkModalOpen(false); Alert.alert('Bulk Quote Request Sent!', targetChefName ? `Request sent specifically to ${targetChefName}.` : `Broadcast request sent to all kitchens in ${cluster}.`); }}>
               <Text style={styles.checkoutBtnText}>Submit Catering Request (₹{bulkGuestCount * 149})</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* PAYMENT MODAL */}
-      <Modal visible={paymentScreenOpen} animationType="slide" onRequestClose={() => setPaymentScreenOpen(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#FBF9F6', padding: 20 }}>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginTop: 20 }}>Secure Checkout</Text>
-          <TouchableOpacity style={[styles.checkoutBtn, { backgroundColor: '#166534', marginTop: 30 }]} onPress={processPayment}>
-            <Text style={styles.checkoutBtnText}>✅ MOCK PAY (SIMULATE SUCCESS)</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      </Modal>
-
-      {/* CLEAN 4-TAB BOTTOM NAVIGATION BAR MATCHING WEBSITE */}
+      {/* CLEAN 4-TAB BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('KITCHENS')}>
           <Text style={activeTab === 'KITCHENS' ? styles.tabBarActive : styles.tabBarInactive}>🍱 Explore</Text>
@@ -439,8 +399,8 @@ const styles = StyleSheet.create({
   filterPillText: { fontSize: 11, fontWeight: 'bold', color: '#7E766C' },
   filterPillTextActive: { color: '#FFFFFF' },
 
-  bulkBannerBtn: { marginHorizontal: 16, marginTop: 12, padding: 14, backgroundColor: '#1E1B18', borderRadius: 16, alignItems: 'center' },
-  bulkBannerText: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' },
+  globalBulkBannerBtn: { marginHorizontal: 16, marginTop: 12, padding: 14, backgroundColor: '#1E1B18', borderRadius: 16, alignItems: 'center' },
+  globalBulkBannerText: { color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' },
 
   hingeDeckWrapper: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
   hingeCard: { width: SCREEN_WIDTH - 32, backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#EBE6DF', overflow: 'hidden', elevation: 6 },
@@ -458,8 +418,10 @@ const styles = StyleSheet.create({
   chefSubTitle: { fontSize: 13, color: '#7E766C', marginTop: 2 },
   avatarEmoji: { fontSize: 32 },
   bioText: { fontSize: 13, color: '#4A443F', marginTop: 8, lineHeight: 18 },
-  reelsJumpBtn: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#FFF5F0', borderRadius: 12, borderColor: '#FFD4C2', borderWidth: 1 },
-  reelsJumpText: { fontSize: 12, fontWeight: 'bold', color: '#E53A00' },
+  
+  targetedChefBulkBtn: { marginTop: 10, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#FFF5F0', borderRadius: 12, borderColor: '#FFD4C2', borderWidth: 1, alignItems: 'center' },
+  targetedChefBulkText: { fontSize: 11, fontWeight: 'bold', color: '#E53A00' },
+
   menuHeaderTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E1B18', marginTop: 16 },
   dishListItem: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#FBF9F6', borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 16, marginTop: 8 },
   dishItemName: { fontSize: 14, fontWeight: 'bold', color: '#1E1B18' },
@@ -488,8 +450,6 @@ const styles = StyleSheet.create({
   emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF', margin: 16 },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginTop: 12 },
-  trackingCard: { margin: 16, backgroundColor: '#E6F4EA', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: '#A8DADC' },
-  trackingStatus: { fontSize: 13, fontWeight: 'bold', color: '#1E4620' },
   accountProfileCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: '#EBE6DF', margin: 16 },
   profileEmoji: { fontSize: 54 },
   profileName: { fontSize: 20, fontWeight: 'bold', color: '#1E1B18', marginTop: 8 },
@@ -497,7 +457,7 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   commentSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
-  sheetTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E1B18', marginBottom: 12 },
+  sheetTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E1B18', marginBottom: 12 },
   countChip: { paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#EBE6DF', borderRadius: 12 },
   countChipActive: { backgroundColor: '#E53A00', borderColor: '#E53A00' },
   countChipText: { fontSize: 12, fontWeight: 'bold', color: '#7E766C' },
