@@ -2,6 +2,40 @@
 
 const BACKEND_URL = "http://localhost:8000";
 
+export async function registerMobileUser({ phone, email, password, fullName }) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/v1/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, email, password, full_name: fullName }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Registration failed");
+    }
+    return await res.json();
+  } catch (e) {
+    throw e;
+  }
+}
+
+export async function loginMobileUser({ phone, password }) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Login failed");
+    }
+    return await res.json();
+  } catch (e) {
+    throw e;
+  }
+}
+
 export async function fetchTiffinMenu(cluster = "Ghansoli") {
   try {
     const res = await fetch(`${BACKEND_URL}/api/v1/bulk/templates`);
