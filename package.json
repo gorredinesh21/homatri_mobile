@@ -10,13 +10,20 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/figtree": "^0.4.1",
+    "@expo-google-fonts/fraunces": "^0.4.1",
+    "@react-native-async-storage/async-storage": "^3.1.1",
     "expo": "~54.0.0",
+    "expo-font": "^57.0.3",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.0"
+    "@babel/core": "^7.25.0",
+    "babel-preset-expo": "^57.0.10"
   },
   "private": true
 }

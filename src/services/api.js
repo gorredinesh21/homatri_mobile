@@ -1,126 +1,178 @@
 // Shared API Client connecting Expo React Native Mobile App to FastAPI Backend
 
-const BACKEND_URL = "http://localhost:8000";
+import { getApiBaseUrl } from "../config";
+
+async function parseError(res) {
+  try {
+    const err = await res.json();
+    const detail = err.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((d) => d.msg || d).join(" ");
+    return JSON.stringify(detail || err);
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+}
+
+async function apiRequest(path, { method = "GET", body, token } = {}) {
+  const base = getApiBaseUrl();
+  let response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      method,
+      headers: {
+        Accept: "application/json",
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    throw new Error(
+      `Cannot reach Homatri server at ${base}. On a phone, localhost will not work. Set EXPO_PUBLIC_API_BASE_URL for cloud, or keep Expo and the API on the same Wi-Fi. (${error.message})`
+    );
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  return response.json();
+}
 
 export async function registerMobileUser({ phone, email, password, fullName }) {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/v1/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, email, password, full_name: fullName }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Registration failed");
-    }
-    return await res.json();
-  } catch (e) {
-    throw e;
-  }
+  return apiRequest("/api/v1/auth/register", {
+    method: "POST",
+    body: { phone, email, password, full_name: fullName },
+  });
 }
 
 export async function loginMobileUser({ phone, password }) {
+  return apiRequest("/api/v1/auth/login", {
+    method: "POST",
+    body: { phone, password },
+  });
+}
+
+export async function setupUsername({ phone, requestedUsername }) {
+  return apiRequest("/api/v1/auth/setup-username", {
+    method: "POST",
+    body: { phone, requested_username: requestedUsername || null },
+  });
+}
+
+export async function fetchReelsFeed() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, password }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Login failed");
-    }
-    return await res.json();
+    return await apiRequest("/api/v1/reels/feed");
   } catch (e) {
-    throw e;
+    console.warn("Reels feed fallback:", e.message);
+    return [];
   }
 }
 
-export async function fetchTiffinMenu(cluster = "Ghansoli") {
+export async function fetchChefVideoGallery(chefPhone) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/v1/bulk/templates`);
-    if (res.ok) {
-      return await res.json();
-    }
+    return await apiRequest(`/api/v1/reels/gallery/${encodeURIComponent(chefPhone)}`);
   } catch (e) {
-    console.warn("Backend API notice, using local menu dataset:", e.message);
+    return [];
   }
+}
 
-  // Sample Tiffin Menu Dataset matching website UI
-  return [
-    {
-      id: "tif_1",
-      kitchen_name: "Surmai Konkan Kitchen",
-      chef_name: "Sunita Deshmukh",
-      rating: "4.9",
-      reviews_count: 142,
-      cluster: "Ghansoli",
-      dietary: "PURE_VEG",
-      dish_name: "Authentic Malvani Fish Thali",
-      items_description: "Surmai Fry, Sol Kadhi, 3 Chapati, Rice, Malvani Curry",
-      price: 179,
-      badge: "BESTSELLER",
-    },
-    {
-      id: "tif_2",
-      kitchen_name: "Annapurna Shuddh Rasoi",
-      chef_name: "Meenakshi Joshi",
-      rating: "4.8",
-      reviews_count: 98,
-      cluster: "Ghansoli",
-      dietary: "PURE_VEG",
-      dish_name: "Kathiyawadi Shuddh Thali",
-      items_description: "Ringan Bharta, Sev Tamatar, 4 Phulka, Dal Fry, Jeera Rice",
-      price: 149,
-      badge: "100% PURE VEG",
-    },
-    {
-      id: "tif_3",
-      kitchen_name: "Kolhapuri Flavors",
-      chef_name: "Pradip Patil",
-      rating: "4.9",
-      reviews_count: 210,
-      cluster: "Vashi",
-      dietary: "NON_VEG",
-      dish_name: "Kolhapuri Chicken Tiffin",
-      items_description: "Tambda Rassa, Pandhra Rassa, Chicken Sukka, 3 Bhakri",
-      price: 189,
-      badge: "SPICY SPECIAL",
-    },
-  ];
+export async function fetchReelComments(reelId) {
+  try {
+    return await apiRequest(`/api/v1/reels/${encodeURIComponent(reelId)}/comments`);
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function postReelComment(payload) {
+  return apiRequest("/api/v1/reels/comments", { method: "POST", body: payload });
+}
+
+export async function sendUserMessage(payload) {
+  return apiRequest("/api/v1/chat/send-user-message", { method: "POST", body: payload });
+}
+
+export async function fetchChatThread(userPhone, peerPhone) {
+  return apiRequest(
+    `/api/v1/chat/thread?user_phone=${encodeURIComponent(userPhone)}&peer_phone=${encodeURIComponent(peerPhone)}`
+  );
+}
+
+export async function fetchChatInbox(userPhone) {
+  try {
+    return await apiRequest(`/api/v1/chat/inbox?user_phone=${encodeURIComponent(userPhone)}`);
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function canMessageUser(phone) {
+  try {
+    return await apiRequest(`/api/v1/chat/can-message/${encodeURIComponent(phone)}`);
+  } catch (e) {
+    return {
+      allowed: false,
+      detail:
+        "To protect kitchen cooking quality, chefs cannot be direct-messaged. Please comment on their reels or order their tiffin!",
+    };
+  }
+}
+
+export async function fetchKitchens(cluster = "Ghansoli", mealWindow) {
+  const params = new URLSearchParams();
+  if (cluster) params.set("cluster", cluster);
+  if (mealWindow && mealWindow !== "ALL") params.set("meal_window", mealWindow);
+  const suffix = params.toString() ? `?${params}` : "";
+  return apiRequest(`/api/v1/kitchens${suffix}`);
+}
+
+export async function fetchBulkTemplates() {
+  try {
+    return await apiRequest("/api/v1/bulk/templates");
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function submitBulkCheckout(payload, token) {
+  return apiRequest("/api/v1/bulk/checkout", { method: "POST", token, body: payload });
+}
+
+export async function likeReel(reelId, token) {
+  return apiRequest(`/api/v1/reels/${encodeURIComponent(reelId)}/like`, {
+    method: "POST",
+    token,
+  });
 }
 
 export async function fetchSavedAddresses(token) {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/v1/customer/addresses`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {}
-  return [];
+  return apiRequest("/api/v1/customer/addresses", { token });
+}
+
+export async function saveCustomerAddress(body, token) {
+  return apiRequest("/api/v1/customer/addresses", { method: "POST", token, body });
+}
+
+export async function fetchMyOrders(token) {
+  return apiRequest("/api/v1/orders/mine", { token });
 }
 
 export async function checkoutMobileOrder(orderPayload, token) {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/v1/orders/checkout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(orderPayload),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {}
+  return apiRequest("/api/v1/orders/checkout", {
+    method: "POST",
+    token,
+    body: orderPayload,
+  });
+}
 
-  return {
-    order_id: `ORD-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-    amount: 17900,
-    currency: "INR",
-    status: "created",
-  };
+export async function verifyOrderPayment(orderId, token) {
+  return apiRequest(`/api/v1/orders/${encodeURIComponent(orderId)}/verify-payment`, {
+    method: "POST",
+    token,
+    body: { simulate: true },
+  });
+}
+
+export async function fetchOrderDetail(orderId, token) {
+  return apiRequest(`/api/v1/orders/${encodeURIComponent(orderId)}`, { token });
 }
