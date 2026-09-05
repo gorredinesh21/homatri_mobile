@@ -10,10 +10,9 @@ import {
   Image,
   Dimensions,
   Modal,
-  PanResponder,
-  Animated,
   TextInput,
   Alert,
+  Linking,
 } from 'react-native';
 import { useFonts } from 'expo-font';
 import {
@@ -40,8 +39,8 @@ import { colors, fonts, formatINR } from './src/theme';
 import { absoluteMediaUrl } from './src/config';
 import { resolveCheckoutMealWindow } from './src/utils/mealWindow';
 import { clusterCoords } from './src/utils/geo';
+import { ALL_REGIONS, cuisinesForRegion, cuisineRequestUrl } from './src/utils/cuisineTree';
 import UsernameSetupModal from './src/components/UsernameSetupModal';
-import ChefVideoGallery from './src/components/ChefVideoGallery';
 import ReelsFeed from './src/components/ReelsFeed';
 import CommentSheet from './src/components/CommentSheet';
 import UserDirectChatScreen from './src/components/UserDirectChatScreen';
@@ -72,17 +71,31 @@ function mapKitchenCard(k) {
     name: item.itemName || item.dish_name,
     desc: item.description || "",
     price: Number(item.price ?? item.unit_price ?? 0),
+    dietaryTag: item.dietaryTag || item.dietary_tag || "",
+    isAvailable: item.is_available !== false && item.availability !== "SOLD_OUT",
   }));
   const photo = absoluteMediaUrl(k.photoUrl || k.profileImageUrl);
+  // Dish cards show FOOD photos only — chef faces stay on the kitchen profile.
+  // "Meet ..." reels are chef portraits, so they are skipped here.
+  const chefPhotoRaw = k.photoUrl || k.profileImageUrl || "";
+  const foodPhotos = (k.reels || [])
+    .filter((r) => !/^meet\b/i.test(String(r.caption || r.title || "")))
+    .map((r) => absoluteMediaUrl(r.thumbnailUrl || r.videoUrl))
+    .filter((url) => /\.(jpe?g|png|webp)(\?|$)/i.test(String(url || "")) && url !== absoluteMediaUrl(chefPhotoRaw));
   return {
     id: k.chefId || k.chef_phone,
     kitchenName: k.kitchenName,
     chefName: k.chefName,
-    regionalIdentity: k.hometownRegion || k.regionalIdentity || "",
+    regionalIdentity: k.regionalIdentity || k.hometownRegion || "",
+    regionValue: k.regionalIdentity || k.hometownRegion || "",
     rating: String(k.rating ?? ""),
+    ratingNumber: Number(k.rating ?? 0),
+    isServing: Boolean(k.isCurrentlyServing),
+    isVerified: Boolean(k.isVerified),
     fssai: k.fssaiLicenseNumber ? `FSSAI ${k.fssaiLicenseNumber}` : "",
     bio: k.bio || "",
     photos: photo ? [photo] : [],
+    foodPhotos: [...new Set(foodPhotos)],
     chefPhone: k.chef_phone || k.chefId,
     videoGallery: (k.reels || []).map((r) => ({
       reel_id: r.reelId,
@@ -99,9 +112,10 @@ function mapKitchenCard(k) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('KITCHENS'); // KITCHENS, REELS, CART, ORDERS, ACCOUNT
   const [cluster, setCluster] = useState('Ghansoli');
-  const [cardIndex, setCardIndex] = useState(0);
-  const [photoIndex, setPhotoIndex] = useState(0);
-  const [mealWindowFilter, setMealWindowFilter] = useState('ALL');
+  const [mealWindowFilter, setMealWindowFilter] = useState('LUNCH'); // LUNCH | DINNER | TIFFIN
+  const [region, setRegion] = useState('Maharashtra'); // launch region, pinned by default
+  const [cuisine, setCuisine] = useState(null); // null = all cuisines in region
+  const [profileKitchenId, setProfileKitchenId] = useState(null);
 
   // User Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -242,59 +256,56 @@ export default function App() {
   }, [cluster]);
 
   const mealWindowFilterMatches = (item) => {
+    if (mealWindowFilter === "TIFFIN") return true;
     if (mealWindowFilter === "ALL") return true;
     const w = String(item.mealWindow || "").toUpperCase();
     return w === mealWindowFilter || w === "BOTH";
   };
-  const visibleKitchens = liveKitchens.filter((k) => (k.menu || []).some(mealWindowFilterMatches));
-  const currentKitchen = visibleKitchens[cardIndex % (visibleKitchens.length || 1)] || null;
-  const kitchensRef = useRef(visibleKitchens);
-  kitchensRef.current = visibleKitchens;
 
-  // PanResponder Gesture Engine
-  const pan = useRef(new Animated.ValueXY()).current;
+  // ---- Region → cuisine discovery (mirrors the website) ----
+  const regionCuisines = cuisinesForRegion(region);
+  const liveValuesInRegion = useMemo(
+    () => new Set(regionCuisines.flatMap((entry) => entry.liveValues)),
+    [regionCuisines]
+  );
+  const liveRegionValues = useMemo(
+    () => [...new Set(liveKitchens.map((k) => k.regionValue).filter(Boolean))],
+    [liveKitchens]
+  );
+  const selectedCuisine = cuisine ? regionCuisines.find((entry) => entry.label === cuisine) : null;
+  const regionHasLive = liveRegionValues.some((value) => liveValuesInRegion.has(value));
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: (e, gestureState) => {
-        const deck = kitchensRef.current;
-        const kitchen = deck[0] ? deck[cardIndex % deck.length] : null;
-        if (gestureState.dx > 120) {
-          Animated.timing(pan, { toValue: { x: SCREEN_WIDTH + 100, y: gestureState.dy }, duration: 200, useNativeDriver: false }).start(() => {
-            if (kitchen) Alert.alert('Saved to Favorites ❤️', `${kitchen.kitchenName} saved!`);
-            pan.setValue({ x: 0, y: 0 });
-            setPhotoIndex(0);
-            setCardIndex((prev) => (deck.length ? (prev + 1) % deck.length : 0));
-          });
-        } else if (gestureState.dx < -120) {
-          Animated.timing(pan, { toValue: { x: -SCREEN_WIDTH - 100, y: gestureState.dy }, duration: 200, useNativeDriver: false }).start(() => {
-            pan.setValue({ x: 0, y: 0 });
-            setPhotoIndex(0);
-            setCardIndex((prev) => (deck.length ? (prev + 1) % deck.length : 0));
-          });
-        } else {
-          Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 5, useNativeDriver: false }).start();
-        }
-      },
-    })
-  ).current;
-
-  const cardRotation = pan.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ['-14deg', '0deg', '14deg'],
-    extrapolate: 'clamp',
-  });
-
-  const handlePhotoTap = (evt) => {
-    if (!currentKitchen?.photos?.length) return;
-    const x = evt.nativeEvent.locationX;
-    if (x > SCREEN_WIDTH / 2) {
-      setPhotoIndex((prev) => (prev + 1) % currentKitchen.photos.length);
-    } else {
-      setPhotoIndex((prev) => (prev - 1 + currentKitchen.photos.length) % currentKitchen.photos.length);
+  // Flat dish list for the home screen — food photos only, never chef faces.
+  const homeDishes = useMemo(() => {
+    const out = [];
+    for (const kitchen of liveKitchens) {
+      if (!liveValuesInRegion.has(kitchen.regionValue)) continue;
+      if (selectedCuisine && !selectedCuisine.liveValues.includes(kitchen.regionValue)) continue;
+      let photoIndex = 0;
+      for (const item of kitchen.menu) {
+        if (!item.isAvailable) continue;
+        if (!mealWindowFilterMatches(item)) continue;
+        out.push({
+          ...item,
+          kitchenName: kitchen.kitchenName,
+          kitchenId: kitchen.id,
+          kitchenRating: kitchen.ratingNumber,
+          kitchenRegion: kitchen.regionalIdentity,
+          isServing: kitchen.isServing,
+          photo: kitchen.foodPhotos.length
+            ? kitchen.foodPhotos[photoIndex++ % kitchen.foodPhotos.length]
+            : null,
+        });
+      }
     }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveKitchens, liveValuesInRegion, selectedCuisine, mealWindowFilter]);
+
+  const profileKitchen = liveKitchens.find((k) => k.id === profileKitchenId) || null;
+  const openKitchenProfile = (kitchenId) => {
+    setProfileKitchenId(kitchenId);
+    setProfileOpen(true);
   };
 
   // ---- Multi-item cart ----
@@ -322,7 +333,7 @@ export default function App() {
           line.menuItemId === item.menuItemId ? { ...line, qty: line.qty + 1 } : line
         );
       }
-      return [...prev, { ...item, qty: 1, kitchenName: currentKitchen?.kitchenName }];
+      return [...prev, { ...item, qty: 1, kitchenName: item.kitchenName || '' }];
     });
   };
 
@@ -570,7 +581,7 @@ export default function App() {
       <View style={styles.header}>
         <View>
           <Text style={styles.brandTitle}>Homatri</Text>
-          <Text style={styles.brandSubtitle}>Home-Cooked Meals in Navi Mumbai</Text>
+          <Text style={styles.brandSubtitle}>Achha Khao. Ghar Ka Khao.</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
@@ -584,142 +595,202 @@ export default function App() {
             style={styles.authHeaderBtn}
             onPress={() => setIsAuthModalOpen(true)}
           >
-            <Text style={styles.authHeaderBtnText}>{isAuthenticated ? '👤 Profile' : '🔑 Sign In'}</Text>
+            <Text style={styles.authHeaderBtnText}>{isAuthenticated ? '👤' : '🔑'}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Dual Tab Header */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'KITCHENS' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('KITCHENS')}
-        >
-          <Text style={[styles.tabText, activeTab === 'KITCHENS' && styles.tabTextActive]}>🍱 Explore Kitchens</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'REELS' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('REELS')}
-        >
-          <Text style={[styles.tabText, activeTab === 'REELS' && styles.tabTextActive]}>🎥 Community Reels</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* SCREEN 1: KITCHENS DISCOVERY */}
+      {/* SCREEN 1: WHAT'S COOKING — dish discovery (mirrors website landing) */}
       {activeTab === 'KITCHENS' && (
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }}>
-          <View style={styles.servingFilterBar}>
-            {['ALL', 'LUNCH', 'DINNER'].map((win) => (
+          <View style={styles.homeHeadingWrap}>
+            <Text style={styles.homeHeading}>WHAT&apos;S COOKING NEAR YOU TODAY?</Text>
+            <Text style={styles.homeSubheading}>Home kitchens nearby serving fresh, just like ghar.</Text>
+          </View>
+
+          {/* Meal window tabs */}
+          <View style={styles.mealTabsRow}>
+            {[
+              { id: 'LUNCH', label: '☀️ Lunch' },
+              { id: 'DINNER', label: '🌙 Dinner' },
+              { id: 'TIFFIN', label: '🍱 Tiffin Plans' },
+            ].map((tab) => (
               <TouchableOpacity
-                key={win}
-                style={[styles.filterPill, mealWindowFilter === win && styles.filterPillActive]}
-                onPress={() => setMealWindowFilter(win)}
+                key={tab.id}
+                style={[styles.mealTab, mealWindowFilter === tab.id && styles.mealTabActive]}
+                onPress={() => setMealWindowFilter(tab.id)}
               >
-                <Text style={[styles.filterPillText, mealWindowFilter === win && styles.filterPillTextActive]}>
-                  {win === 'ALL' ? 'All Window' : win === 'LUNCH' ? '☀️ Lunch' : '🌙 Dinner'}
+                <Text style={[styles.mealTabText, mealWindowFilter === tab.id && styles.mealTabTextActive]}>
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* HINGE / TINDER CARD DECK */}
-          {!currentKitchen ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No live kitchens in {cluster} yet</Text>
-              <Text style={styles.emptyTitle}>Homemakers appear here after they finish onboarding and publish a menu.</Text>
+          {mealWindowFilter === 'TIFFIN' ? (
+            <View style={{ marginTop: 14, gap: 12 }}>
+              {[
+                { emoji: '📅', title: 'Monthly Tiffin Plans', body: 'Daily lunch or dinner thalis all month. One kitchen, one fixed time, zero re-ordering.' },
+                { emoji: '🏢', title: 'Office & Team Lunches', body: 'Bulk home-cooked lunches delivered together — pooled delivery keeps it cheap and hot.' },
+                { emoji: '🎉', title: 'Events & Small Parties', body: 'Regional home cooks catering your function with real ghar-ka-khana.' },
+              ].map((plan) => (
+                <TouchableOpacity
+                  key={plan.title}
+                  style={styles.tiffinPlanCard}
+                  activeOpacity={0.9}
+                  onPress={() => openTargetedBulkModal(null)}
+                >
+                  <Text style={{ fontSize: 26 }}>{plan.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.tiffinPlanTitle}>{plan.title}</Text>
+                    <Text style={styles.tiffinPlanBody}>{plan.body}</Text>
+                  </View>
+                  <Text style={{ color: colors.orange, fontWeight: 'bold' }}>➔</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           ) : (
-          <View style={styles.hingeDeckWrapper}>
-            <Animated.View
-              {...panResponder.panHandlers}
-              style={[
-                styles.hingeCard,
-                { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate: cardRotation }] },
-              ]}
-            >
-              <View style={styles.photoDotsRow}>
-                {(currentKitchen.photos || []).map((_, i) => (
-                  <View key={i} style={[styles.photoDot, photoIndex === i && styles.photoDotActive]} />
+            <>
+              {/* Region chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.regionRow}>
+                {ALL_REGIONS.map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    style={[styles.regionChip, region === name && styles.regionChipActive]}
+                    onPress={() => {
+                      setRegion(name);
+                      setCuisine(null);
+                    }}
+                  >
+                    <Text style={[styles.regionChipText, region === name && styles.regionChipTextActive]}>
+                      {name}
+                    </Text>
+                  </TouchableOpacity>
                 ))}
-              </View>
+              </ScrollView>
 
-              <TouchableOpacity activeOpacity={0.9} onPress={handlePhotoTap} style={{ position: 'relative' }}>
-                {currentKitchen.photos?.[0] ? (
-                <Image source={{ uri: currentKitchen.photos[photoIndex % currentKitchen.photos.length] }} style={styles.cardImage} />
-                ) : (
-                  <View style={[styles.cardImage, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={{ color: colors.muted }}>{currentKitchen.fssai || 'Home kitchen'}</Text>
-                  </View>
-                )}
-                <View style={styles.topBadgeRow}>
-                  <Text style={styles.regionBadge}>{currentKitchen.regionalIdentity}</Text>
-                  <View style={styles.ratingBadge}>
-                    <Text style={styles.ratingText}>⭐ {currentKitchen.rating}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.cardBody}>
-                <View style={styles.chefHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.kitchenTitle}>{currentKitchen.kitchenName}</Text>
-                    <Text style={styles.chefSubTitle}>By {currentKitchen.chefName}</Text>
-                  </View>
-                  <Text style={styles.avatarEmoji}>{currentKitchen.avatarEmoji}</Text>
-                </View>
-
-                <Text style={styles.bioText}>{currentKitchen.bio}</Text>
-
-                <TouchableOpacity onPress={() => setProfileOpen(true)}>
-                  <Text style={{ color: colors.orange, fontWeight: 'bold', marginTop: 8, fontSize: 12 }}>View full kitchen profile ➔</Text>
-                </TouchableOpacity>
-
-                <ChefVideoGallery videos={currentKitchen.videoGallery || []} onOpenReel={openReelFromGallery} />
-
-                {/* TARGETED CHEF BULK CATERING BUTTON INSIDE CHEF CARD */}
+              {/* Cuisine chips within the region */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.regionRow}>
                 <TouchableOpacity
-                  style={styles.targetedChefBulkBtn}
-                  onPress={() => openTargetedBulkModal(currentKitchen.chefName)}
+                  style={[styles.cuisineChip, cuisine === null && styles.cuisineChipActive]}
+                  onPress={() => setCuisine(null)}
                 >
-                  <Text style={styles.targetedChefBulkText}>📦 Request Bulk Catering from {currentKitchen.chefName} ➔</Text>
+                  <Text style={[styles.cuisineChipText, cuisine === null && styles.cuisineChipTextActive]}>All</Text>
                 </TouchableOpacity>
-
-                {/* Menu Items List */}
-                <Text style={styles.menuHeaderTitle}>Available Menu Items</Text>
-                {(mealWindowFilter === "ALL"
-                  ? currentKitchen.menu
-                  : currentKitchen.menu.filter(mealWindowFilterMatches)
-                ).map((item) => {
-                  const inCart = cart.find((line) => line.menuItemId === item.menuItemId);
+                {regionCuisines.map((entry) => {
+                  const live = entry.liveValues.some((value) => liveRegionValues.includes(value));
+                  const selected = cuisine === entry.label;
                   return (
-                  <View key={item.id} style={styles.dishListItem}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.dishItemName}>{item.name}</Text>
-                      <Text style={styles.dishItemDesc}>{item.desc}</Text>
-                      <Text style={styles.dishItemPrice}>{formatINR(item.price)}</Text>
-                    </View>
-                    {inCart ? (
-                      <View style={styles.qtyStepper}>
-                        <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(item.menuItemId, -1)}>
-                          <Text style={styles.qtyBtnText}>−</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.qtyVal}>{inCart.qty}</Text>
-                        <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(item.menuItemId, 1)}>
-                          <Text style={styles.qtyBtnText}>+</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity style={styles.addDishBtn} onPress={() => addToCart(item)}>
-                        <Text style={styles.addDishBtnText}>+ ADD</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                    <TouchableOpacity
+                      key={entry.label}
+                      style={[
+                        styles.cuisineChip,
+                        selected && styles.cuisineChipActive,
+                        !live && !selected && styles.cuisineChipSoon,
+                      ]}
+                      onPress={() => setCuisine(selected ? null : entry.label)}
+                    >
+                      <Text style={[styles.cuisineChipText, selected && styles.cuisineChipTextActive]}>
+                        {entry.label}
+                        {live ? '  ●' : '  soon'}
+                      </Text>
+                    </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
 
-            </Animated.View>
-          </View>
+              {(selectedCuisine && selectedCuisine.liveValues.length === 0) || (!regionHasLive && !selectedCuisine) ? (
+                <View style={styles.comingSoonCard}>
+                  <Text style={{ fontSize: 30 }}>🍽️</Text>
+                  <Text style={styles.comingSoonTitle}>
+                    {selectedCuisine ? `${selectedCuisine.label} kitchens` : `${region} kitchens`} are coming soon.
+                  </Text>
+                  <Text style={styles.comingSoonBody}>
+                    We&apos;re onboarding cooks right now — the most requested regions get cooks first.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.requestBtn}
+                    onPress={() => Linking.openURL(cuisineRequestUrl(selectedCuisine ? selectedCuisine.label : `${region} food`))}
+                  >
+                    <Text style={styles.requestBtnText}>
+                      Request {selectedCuisine ? selectedCuisine.label : `${region} food`} ➔
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : homeDishes.length > 0 ? (
+                <View style={{ marginTop: 14, gap: 12 }}>
+                  {homeDishes.map((dish) => {
+                    const inCart = cart.find((line) => line.menuItemId === dish.menuItemId);
+                    const isNonVeg = /NON/i.test(String(dish.dietaryTag || ''));
+                    return (
+                      <TouchableOpacity
+                        key={`${dish.kitchenId}-${dish.menuItemId}`}
+                        style={styles.dishCard}
+                        activeOpacity={0.9}
+                        onPress={() => openKitchenProfile(dish.kitchenId)}
+                      >
+                        {dish.photo ? (
+                          <Image source={{ uri: dish.photo }} style={styles.dishPhoto} />
+                        ) : (
+                          <View style={[styles.dishPhoto, styles.dishPhotoFallback]}>
+                            <Text style={{ fontSize: 26 }}>🍽️</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text numberOfLines={1} style={styles.dishName}>{dish.name}</Text>
+                            <View style={[styles.vegDotBox, isNonVeg && styles.vegDotBoxNon]}>
+                              <View style={[styles.vegDot, isNonVeg && styles.vegDotNon]} />
+                            </View>
+                          </View>
+                          <Text numberOfLines={1} style={styles.dishKitchen}>
+                            {dish.kitchenName} · {String(dish.kitchenRegion || '').split(',')[0]}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                            <View style={styles.ratingChip}>
+                              <Text style={styles.ratingChipText}>⭐ {dish.kitchenRating ? dish.kitchenRating.toFixed(1) : '4.8'}</Text>
+                            </View>
+                            {dish.isServing ? (
+                              <View style={styles.servingChip}>
+                                <View style={styles.servingDot} />
+                                <Text style={styles.servingChipText}>Serving now</Text>
+                              </View>
+                            ) : (
+                              <View style={[styles.servingChip, styles.servingChipPre]}>
+                                <Text style={[styles.servingChipText, styles.servingChipTextPre]}>Pre-order</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                            <Text style={styles.dishPrice}>{formatINR(dish.price)}</Text>
+                            {inCart ? (
+                              <View style={styles.qtyStepper}>
+                                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, -1)}>
+                                  <Text style={styles.qtyBtnText}>−</Text>
+                                </TouchableOpacity>
+                                <Text style={styles.qtyVal}>{inCart.qty}</Text>
+                                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, 1)}>
+                                  <Text style={styles.qtyBtnText}>+</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(dish)}>
+                                <Text style={styles.addBtnText}>+ Add</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyTitle}>Nothing live in this window right now.</Text>
+                  <Text style={styles.emptyTitle}>Kitchens refresh daily — lunch opens in the morning, dinner after 3 PM.</Text>
+                </View>
+              )}
+            </>
           )}
         </ScrollView>
       )}
@@ -931,7 +1002,9 @@ export default function App() {
       <Modal visible={isBulkModalOpen} animationType="slide" transparent onRequestClose={() => setIsBulkModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.commentSheet}>
-            <Text style={styles.sheetTitle}>📦 Request Bulk Catering from {targetChefName}</Text>
+            <Text style={styles.sheetTitle}>
+              {targetChefName ? `📦 Request Bulk Catering from ${targetChefName}` : '📦 Tiffin & Bulk Plans'}
+            </Text>
             <Text style={{ fontSize: 13, color: colors.muted }}>Number of Guests: {bulkGuestCount} People</Text>
 
             <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
@@ -973,7 +1046,7 @@ export default function App() {
       />
       <ExpandedHingeProfile
         visible={profileOpen}
-        kitchen={currentKitchen}
+        kitchen={profileKitchen}
         onClose={() => setProfileOpen(false)}
         onAdd={addToCart}
         onOpenReel={openReelFromGallery}
@@ -1027,7 +1100,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.cream },
   header: { paddingHorizontal: 20, paddingVertical: 14, backgroundColor: colors.white, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  brandTitle: { fontSize: 22, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.heading },
+  brandTitle: { fontSize: 24, fontWeight: 'bold', color: colors.orange, fontFamily: fonts.heading },
   brandSubtitle: { fontSize: 11, color: colors.muted, marginTop: 1, fontFamily: fonts.base },
   clusterBadge: { backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.orangeLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   clusterText: { fontSize: 11, fontWeight: 'bold', color: colors.orange, fontFamily: fonts.baseBold },
@@ -1130,4 +1203,51 @@ const styles = StyleSheet.create({
   tabBarItem: { flex: 1, alignItems: 'center' },
   tabBarActive: { color: colors.orange, fontWeight: 'bold', fontSize: 12, fontFamily: fonts.baseBold },
   tabBarInactive: { color: colors.muted, fontSize: 12, fontFamily: fonts.base },
+
+  // ---- WHAT'S COOKING home (reference design) ----
+  homeHeadingWrap: { paddingHorizontal: 4, paddingTop: 16, paddingBottom: 4 },
+  homeHeading: { fontSize: 24, lineHeight: 30, color: colors.dark, fontFamily: fonts.heading, letterSpacing: 0.2 },
+  homeSubheading: { fontSize: 13, color: colors.muted, marginTop: 4, fontFamily: fonts.base },
+  mealTabsRow: { flexDirection: 'row', gap: 8, marginTop: 14, paddingHorizontal: 4 },
+  mealTab: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  mealTabActive: { backgroundColor: colors.forest, borderColor: colors.forest },
+  mealTabText: { fontSize: 12, fontWeight: 'bold', color: colors.muted, fontFamily: fonts.baseBold },
+  mealTabTextActive: { color: colors.white },
+  regionRow: { marginTop: 10, paddingHorizontal: 4 },
+  regionChip: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, marginRight: 8 },
+  regionChipActive: { backgroundColor: colors.forest, borderColor: colors.forest },
+  regionChipText: { fontSize: 12, fontWeight: 'bold', color: colors.muted, fontFamily: fonts.baseBold },
+  regionChipTextActive: { color: colors.white },
+  cuisineChip: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, flexDirection: 'row', alignItems: 'center' },
+  cuisineChipActive: { backgroundColor: colors.dark, borderColor: colors.dark },
+  cuisineChipSoon: { backgroundColor: colors.sand, borderColor: colors.border, borderStyle: 'dashed' },
+  cuisineChipText: { fontSize: 11, fontWeight: '600', color: colors.muted, fontFamily: fonts.baseSemiBold },
+  cuisineChipTextActive: { color: colors.white },
+  dishCard: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 12, elevation: 2 },
+  dishPhoto: { width: 88, height: 88, borderRadius: 16, backgroundColor: colors.sand },
+  dishPhotoFallback: { alignItems: 'center', justifyContent: 'center' },
+  dishName: { flex: 1, fontSize: 15, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
+  dishKitchen: { fontSize: 11, color: colors.muted, marginTop: 2, fontFamily: fonts.base },
+  ratingChip: { backgroundColor: colors.sand, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  ratingChipText: { fontSize: 10, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
+  servingChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.forestMist, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  servingChipPre: { backgroundColor: colors.sand },
+  servingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.forest },
+  servingChipText: { fontSize: 10, fontWeight: 'bold', color: colors.forest, fontFamily: fonts.baseBold },
+  servingChipTextPre: { color: colors.muted },
+  dishPrice: { fontSize: 17, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.heading },
+  addBtn: { backgroundColor: colors.orange, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 8, elevation: 2 },
+  addBtnText: { color: colors.white, fontSize: 13, fontWeight: 'bold', fontFamily: fonts.baseBold },
+  vegDotBox: { width: 14, height: 14, borderWidth: 1.5, borderColor: '#15803D', borderRadius: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
+  vegDotBoxNon: { borderColor: '#B91C1C' },
+  vegDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#15803D' },
+  vegDotNon: { backgroundColor: '#B91C1C' },
+  tiffinPlanCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 16, elevation: 2 },
+  tiffinPlanTitle: { fontSize: 15, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
+  tiffinPlanBody: { fontSize: 12, color: colors.muted, marginTop: 3, fontFamily: fonts.base },
+  comingSoonCard: { marginTop: 14, backgroundColor: colors.cream, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 24, alignItems: 'center' },
+  comingSoonTitle: { fontSize: 16, fontWeight: 'bold', color: colors.dark, marginTop: 8, textAlign: 'center', fontFamily: fonts.baseBold },
+  comingSoonBody: { fontSize: 12, color: colors.muted, marginTop: 4, textAlign: 'center', fontFamily: fonts.base },
+  requestBtn: { backgroundColor: colors.forest, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10, marginTop: 14 },
+  requestBtnText: { color: colors.white, fontSize: 13, fontWeight: 'bold', fontFamily: fonts.baseBold },
 });
