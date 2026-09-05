@@ -53,7 +53,7 @@ import OrderTrackingScreen from './src/components/OrderTrackingScreen';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const DELIVERY_FEE = 30;
+const DELIVERY_FEE = 11; // convenience fee
 const STORAGE_KEYS = {
   auth: '@homatri/auth',
   cart: '@homatri/cart',
@@ -781,7 +781,7 @@ export default function App() {
                   <Text style={styles.priceLineValue}>{formatINR(cartSubtotal)}</Text>
                 </View>
                 <View style={styles.priceLine}>
-                  <Text style={styles.priceLineLabel}>Delivery Fee</Text>
+                  <Text style={styles.priceLineLabel}>Convenience Fee</Text>
                   <Text style={styles.priceLineValue}>{formatINR(DELIVERY_FEE)}</Text>
                 </View>
                 <View style={styles.divider} />
