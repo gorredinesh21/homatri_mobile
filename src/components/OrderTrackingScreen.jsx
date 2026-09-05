@@ -103,7 +103,7 @@ export default function OrderTrackingScreen({ visible, order, token, onClose }) 
               <Text style={styles.itemsHeader}>Items</Text>
               {live.items.map((it, i) => (
                 <View key={i} style={styles.itemRow}>
-                  <Text style={styles.itemName}>{it.item_name || it.name || `Item ${it.menu_item_id}`}</Text>
+                  <Text style={styles.itemName}>{it.dish_name || it.item_name || it.name || `Item ${it.menu_item_id}`}</Text>
                   <Text style={styles.itemQty}>×{it.quantity ?? 1}</Text>
                 </View>
               ))}

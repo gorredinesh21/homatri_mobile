@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { saveCustomerAddress } from "../services/api";
+import { clusterCoords } from "../utils/geo";
 import { colors, fonts } from "../theme";
 
 const CLUSTERS = ["Ghansoli", "Vashi", "Airoli"];
@@ -49,6 +50,7 @@ export default function AddressBookModal({
     }
     setSaving(true);
     try {
+      const fallbackPin = clusterCoords(form.cluster);
       await saveCustomerAddress(
         {
           flat_no: form.flat_no,
@@ -57,8 +59,8 @@ export default function AddressBookModal({
           full_address: [form.flat_no, form.street_address, form.landmark, form.cluster].filter(Boolean).join(", "),
           phone: form.phone,
           cluster: form.cluster,
-          latitude: form.latitude ? Number(form.latitude) : null,
-          longitude: form.longitude ? Number(form.longitude) : null,
+          latitude: form.latitude ? Number(form.latitude) : fallbackPin.latitude,
+          longitude: form.longitude ? Number(form.longitude) : fallbackPin.longitude,
         },
         token
       );
@@ -127,8 +129,8 @@ export default function AddressBookModal({
                 ))}
               </View>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <TextInput value={form.latitude} onChangeText={(v) => setField("latitude", v)} placeholder="Latitude" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
-                <TextInput value={form.longitude} onChangeText={(v) => setField("longitude", v)} placeholder="Longitude" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
+                <TextInput value={form.latitude} onChangeText={(v) => setField("latitude", v)} placeholder="Latitude (optional)" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
+                <TextInput value={form.longitude} onChangeText={(v) => setField("longitude", v)} placeholder="Longitude (optional)" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
               </View>
               <TouchableOpacity style={styles.saveBtn} onPress={submit} disabled={saving}>
                 {saving ? <ActivityIndicator color={colors.white} /> : <Text style={styles.saveBtnText}>Save Address</Text>}

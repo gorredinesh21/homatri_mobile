@@ -9,6 +9,7 @@ import {
   Dimensions,
 } from "react-native";
 import { fetchReelsFeed } from "../services/api";
+import { absoluteMediaUrl } from "../config";
 import { colors, fonts } from "../theme";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -65,7 +66,7 @@ export default function ReelsFeed({ likedReels, onToggleLike, onOpenComments, in
         const liked = Boolean(likedReels[item.reel_id]);
         return (
           <View style={styles.page}>
-            <Image source={{ uri: item.thumbnail_url || item.video_url }} style={styles.media} />
+            <Image source={{ uri: absoluteMediaUrl(item.thumbnail_url || item.video_url) }} style={styles.media} />
             <View style={styles.caption}>
               <Text style={styles.chef}>👩‍🍳 {item.chef_name}</Text>
               <Text style={styles.text}>{item.caption || item.title}</Text>

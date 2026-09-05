@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -37,6 +37,9 @@ import {
   submitBulkCheckout,
 } from './src/services/api';
 import { colors, fonts, formatINR } from './src/theme';
+import { absoluteMediaUrl } from './src/config';
+import { resolveCheckoutMealWindow } from './src/utils/mealWindow';
+import { clusterCoords } from './src/utils/geo';
 import UsernameSetupModal from './src/components/UsernameSetupModal';
 import ChefVideoGallery from './src/components/ChefVideoGallery';
 import ReelsFeed from './src/components/ReelsFeed';
@@ -70,7 +73,7 @@ function mapKitchenCard(k) {
     desc: item.description || "",
     price: Number(item.price ?? item.unit_price ?? 0),
   }));
-  const photo = k.photoUrl || k.profileImageUrl;
+  const photo = absoluteMediaUrl(k.photoUrl || k.profileImageUrl);
   return {
     id: k.chefId || k.chef_phone,
     kitchenName: k.kitchenName,
@@ -85,8 +88,8 @@ function mapKitchenCard(k) {
       reel_id: r.reelId,
       title: r.caption,
       caption: r.caption,
-      thumbnail_url: r.thumbnailUrl,
-      video_url: r.videoUrl,
+      thumbnail_url: absoluteMediaUrl(r.thumbnailUrl || r.videoUrl),
+      video_url: absoluteMediaUrl(r.videoUrl),
     })),
     avatarEmoji: "👩‍🍳",
     menu,
@@ -238,10 +241,12 @@ export default function App() {
     };
   }, [cluster]);
 
-  const visibleKitchens = liveKitchens.filter((k) => {
+  const mealWindowFilterMatches = (item) => {
     if (mealWindowFilter === "ALL") return true;
-    return (k.menu || []).some((item) => String(item.mealWindow).toUpperCase() === mealWindowFilter);
-  });
+    const w = String(item.mealWindow || "").toUpperCase();
+    return w === mealWindowFilter || w === "BOTH";
+  };
+  const visibleKitchens = liveKitchens.filter((k) => (k.menu || []).some(mealWindowFilterMatches));
   const currentKitchen = visibleKitchens[cardIndex % (visibleKitchens.length || 1)] || null;
   const kitchensRef = useRef(visibleKitchens);
   kitchensRef.current = visibleKitchens;
@@ -341,6 +346,10 @@ export default function App() {
   };
 
   const selectedAddress = savedAddresses.find((a) => a.id === selectedAddressId) || null;
+  const scheduledMealWindow = useMemo(
+    () => resolveCheckoutMealWindow(cart),
+    [cart]
+  );
 
   // ---- Checkout with payment ----
   const placeOrder = async () => {
@@ -355,10 +364,10 @@ export default function App() {
       return;
     }
     try {
-      const firstLine = cart[0];
+      const fallbackPin = clusterCoords(selectedAddress.cluster || cluster);
       const result = await checkoutMobileOrder(
         {
-          meal_window: firstLine.mealWindow || (mealWindowFilter === "DINNER" ? "DINNER" : "LUNCH"),
+          meal_window: scheduledMealWindow.mealWindow,
           items: cart.map((line) => ({
             menu_item_id: line.menuItemId,
             chef_id: line.chefId,
@@ -366,8 +375,8 @@ export default function App() {
           })),
           delivery_address: {
             full_address: selectedAddress.full_address || selectedAddress.fullAddress,
-            latitude: selectedAddress.latitude,
-            longitude: selectedAddress.longitude,
+            latitude: selectedAddress.latitude ?? fallbackPin.latitude,
+            longitude: selectedAddress.longitude ?? fallbackPin.longitude,
             phone: selectedAddress.phone,
           },
           payment_method: paymentMethod,
@@ -679,7 +688,7 @@ export default function App() {
                 <Text style={styles.menuHeaderTitle}>Available Menu Items</Text>
                 {(mealWindowFilter === "ALL"
                   ? currentKitchen.menu
-                  : currentKitchen.menu.filter((item) => String(item.mealWindow).toUpperCase() === mealWindowFilter)
+                  : currentKitchen.menu.filter(mealWindowFilterMatches)
                 ).map((item) => {
                   const inCart = cart.find((line) => line.menuItemId === item.menuItemId);
                   return (
@@ -790,6 +799,7 @@ export default function App() {
                     ? selectedAddress.full_address || selectedAddress.fullAddress
                     : "No address selected. Add one to enable checkout."}
                 </Text>
+                <Text style={styles.schedulingNote}>🍽️ Ordering for: {scheduledMealWindow.label}</Text>
                 <TouchableOpacity style={styles.secondaryBtn} onPress={() => setAddressBookOpen(true)}>
                   <Text style={styles.secondaryBtnText}>{selectedAddress ? 'Change Address' : 'Select Address'}</Text>
                 </TouchableOpacity>
@@ -1082,6 +1092,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
   addressHeaderLabel: { fontSize: 11, fontWeight: 'bold', color: colors.muted, fontFamily: fonts.baseBold },
   addressText: { fontSize: 13, fontWeight: 'bold', color: colors.dark, marginTop: 6, fontFamily: fonts.baseBold },
+  schedulingNote: { fontSize: 11, fontWeight: 'bold', color: colors.orange, marginTop: 6, fontFamily: fonts.baseBold },
   priceLine: { flexDirection: 'row', marginBottom: 8, alignItems: 'center' },
   priceLineLabel: { flex: 1, fontSize: 13, color: colors.muted, fontFamily: fonts.base },
   priceLineLabelBold: { flex: 1, fontSize: 14, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },

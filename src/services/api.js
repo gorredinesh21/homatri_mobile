@@ -60,12 +60,7 @@ export async function setupUsername({ phone, requestedUsername }) {
 }
 
 export async function fetchReelsFeed() {
-  try {
-    return await apiRequest("/api/v1/reels/feed");
-  } catch (e) {
-    console.warn("Reels feed fallback:", e.message);
-    return [];
-  }
+  return apiRequest("/api/v1/reels/feed");
 }
 
 export async function fetchChefVideoGallery(chefPhone) {

@@ -31,3 +31,14 @@ export function getApiBaseUrl() {
 
   return CLOUD_API_BASE_URL;
 }
+
+/**
+ * Chef-uploaded reels/photos come back as server-relative URLs (/media/reels/x.mp4).
+ * React Native <Image> cannot resolve relative URLs — anchor them to the API base.
+ */
+export function absoluteMediaUrl(url) {
+  const raw = String(url || "");
+  if (!raw) return raw;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `${getApiBaseUrl()}${raw.startsWith("/") ? "" : "/"}${raw}`;
+}
