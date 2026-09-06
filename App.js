@@ -111,7 +111,8 @@ function mapKitchenCard(k) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('KITCHENS'); // KITCHENS, REELS, CART, ORDERS, ACCOUNT
+  const [activeTab, setActiveTab] = useState('KITCHENS'); // KITCHENS, REELS, ORDERS, ACCOUNT (+ cart card modal)
+  const [cartCardOpen, setCartCardOpen] = useState(false);
   const [cluster, setCluster] = useState('Ghansoli');
   const [mealWindowFilter, setMealWindowFilter] = useState('LUNCH'); // LUNCH | DINNER | TIFFIN
   const [region, setRegion] = useState('Maharashtra'); // launch region, pinned by default
@@ -720,74 +721,58 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
               ) : homeDishes.length > 0 ? (
-                <View style={{ marginTop: 14, gap: 12 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingTop: 14 }}>
                   {homeDishes.map((dish) => {
                     const inCart = cart.find((line) => line.menuItemId === dish.menuItemId);
-                    const isNonVeg = /NON/i.test(String(dish.dietaryTag || ''));
+                    const isNonVeg = /NON/i.test(String(dish.dietryTag || dish.dietaryTag || ''));
                     return (
                       <TouchableOpacity
                         key={`${dish.kitchenId}-${dish.menuItemId}`}
-                        style={styles.dishCard}
+                        style={{ width: 148, alignItems: 'center' }}
                         activeOpacity={0.9}
                         onPress={() => openKitchenProfile(dish.kitchenId)}
                       >
-                        {dish.photo ? (
-                          <Image source={{ uri: dish.photo }} style={styles.dishPhoto} />
-                        ) : (
-                          <View style={[styles.dishPhoto, styles.dishPhotoFallback]}>
-                            <Text style={{ fontSize: 26 }}>🍽️</Text>
-                          </View>
-                        )}
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text numberOfLines={1} style={styles.dishName}>{dish.name}</Text>
-                            <View style={[styles.vegDotBox, isNonVeg && styles.vegDotBoxNon]}>
-                              <View style={[styles.vegDot, isNonVeg && styles.vegDotNon]} />
-                            </View>
-                          </View>
-                          <Text numberOfLines={1} style={styles.dishKitchen}>
-                            {dish.kitchenName} · {String(dish.kitchenRegion || '').split(',')[0]}
-                          </Text>
-                          {dish.desc ? (
-                            <Text numberOfLines={2} style={styles.dishIncludes}>
-                              {dish.desc}
-                            </Text>
-                          ) : null}
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                            {dish.isServing ? (
-                              <View style={styles.servingChip}>
-                                <View style={styles.servingDot} />
-                                <Text style={styles.servingChipText}>Serving now</Text>
-                              </View>
+                        <View style={{ position: 'relative' }}>
+                          <View style={styles.circleRing}>
+                            {dish.photo ? (
+                              <Image source={{ uri: dish.photo }} style={styles.circleImg} />
                             ) : (
-                              <View style={[styles.servingChip, styles.servingChipPre]}>
-                                <Text style={[styles.servingChipText, styles.servingChipTextPre]}>Pre-order</Text>
-                              </View>
+                              <Text style={{ fontSize: 26 }}>🍽️</Text>
                             )}
                           </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                            <Text style={styles.dishPrice}>{formatINR(dish.price)}</Text>
-                            {inCart ? (
-                              <View style={styles.qtyStepper}>
-                                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, -1)}>
-                                  <Text style={styles.qtyBtnText}>−</Text>
-                                </TouchableOpacity>
-                                <Text style={styles.qtyVal}>{inCart.qty}</Text>
-                                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, 1)}>
-                                  <Text style={styles.qtyBtnText}>+</Text>
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(dish)}>
-                                <Text style={styles.addBtnText}>+ Add</Text>
+                          {dish.isServing ? <View style={styles.circleLiveDot} /> : null}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, paddingHorizontal: 2 }}>
+                          <Text numberOfLines={2} style={styles.dishName}>{dish.name}</Text>
+                          <View style={[styles.vegDotBox, isNonVeg && styles.vegDotBoxNon]}>
+                            <View style={[styles.vegDot, isNonVeg && styles.vegDotNon]} />
+                          </View>
+                        </View>
+                        {dish.desc ? (
+                          <Text numberOfLines={2} style={styles.dishIncludes}>{dish.desc}</Text>
+                        ) : null}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                          <Text style={styles.dishPrice}>{formatINR(dish.price)}</Text>
+                          {inCart ? (
+                            <View style={styles.qtyStepper}>
+                              <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, -1)}>
+                                <Text style={styles.qtyBtnText}>−</Text>
                               </TouchableOpacity>
-                            )}
-                          </View>
+                              <Text style={styles.qtyVal}>{inCart.qty}</Text>
+                              <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(dish.menuItemId, 1)}>
+                                <Text style={styles.qtyBtnText}>+</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(dish)}>
+                              <Text style={styles.addBtnText}>+ Add</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </TouchableOpacity>
                     );
                   })}
-                </View>
+                </ScrollView>
               ) : (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyTitle}>Nothing live in this window right now.</Text>
@@ -815,10 +800,20 @@ export default function App() {
         />
       )}
 
-      {/* SCREEN 3: CART & CHECKOUT */}
-      {activeTab === 'CART' && (
-        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }}>
-          <Text style={styles.sectionHeader}>Your Cart</Text>
+      {/* CART CARD - collapsible card from the floating bubble (web parity) */}
+      <Modal visible={cartCardOpen} animationType="fade" transparent onRequestClose={() => setCartCardOpen(false)}>
+        <View style={styles.cartCardOverlay}>
+          <View style={styles.cartCardShell}>
+            <View style={styles.cartCardHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cartCardTitle}>Your order</Text>
+                {cart[0] ? <Text style={styles.cartCardSub} numberOfLines={1}>{cart[0].kitchenName || ''}</Text> : null}
+              </View>
+              <TouchableOpacity onPress={() => setCartCardOpen(false)} style={styles.cartCardClose}>
+                <Text style={{ color: colors.muted, fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 12 }}>
           {cart.length > 0 ? (
             <>
               {cart.map((line) => (
@@ -903,7 +898,7 @@ export default function App() {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.checkoutBtn} onPress={placeOrder}>
+              <TouchableOpacity style={styles.checkoutBtn} onPress={() => { placeOrder(); }}>
                 <Text style={styles.checkoutBtnText}>
                   {paymentMethod === 'COD' ? 'PLACE ORDER' : 'PAY & CONFIRM'} ({formatINR(cartTotal)})
                 </Text>
@@ -915,8 +910,10 @@ export default function App() {
               <Text style={styles.emptyTitle}>Your cart is empty</Text>
             </View>
           )}
-        </ScrollView>
-      )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* SCREEN 4: ORDERS */}
       {activeTab === 'ORDERS' && (
@@ -1083,7 +1080,7 @@ export default function App() {
       <CartBubble
         count={cartCount}
         totalRupees={cartTotal}
-        onPress={() => setActiveTab('CART')}
+        onPress={() => setCartCardOpen(true)}
       />
 
       {/* CLEAN 5-TAB BOTTOM NAVIGATION BAR */}
@@ -1093,9 +1090,6 @@ export default function App() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('REELS')}>
           <Text style={activeTab === 'REELS' ? styles.tabBarActive : styles.tabBarInactive}>🎥 Reels</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('CART')}>
-          <Text style={activeTab === 'CART' ? styles.tabBarActive : styles.tabBarInactive}>🛒 Cart{cartCount ? ` (${cartCount})` : ''}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('ORDERS')}>
           <Text style={activeTab === 'ORDERS' ? styles.tabBarActive : styles.tabBarInactive}>📦 Orders</Text>
@@ -1234,12 +1228,21 @@ const styles = StyleSheet.create({
   cuisineChipSoon: { backgroundColor: colors.sand, borderColor: colors.border, borderStyle: 'dashed' },
   cuisineChipText: { fontSize: 11, fontWeight: '600', color: colors.muted, fontFamily: fonts.baseSemiBold },
   cuisineChipTextActive: { color: colors.white },
-  dishCard: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 12, elevation: 2 },
-  dishPhoto: { width: 88, height: 88, borderRadius: 16, backgroundColor: colors.sand },
+  circleRing: {
+    width: 112, height: 112, borderRadius: 999, borderWidth: 2, borderStyle: 'dashed',
+    borderColor: 'rgba(30,107,78,0.35)', backgroundColor: colors.forestMist,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  circleImg: { width: '100%', height: '100%', borderRadius: 999 },
+  circleLiveDot: {
+    position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: 999,
+    backgroundColor: colors.forest, borderWidth: 2, borderColor: '#fff',
+  },
+  dishPhoto: { width: 112, height: 112, borderRadius: 999, backgroundColor: colors.sand },
   dishPhotoFallback: { alignItems: 'center', justifyContent: 'center' },
-  dishName: { flex: 1, fontSize: 15, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
+  dishName: { flex: 1, fontSize: 13, fontWeight: 'bold', color: colors.dark, textAlign: 'center', fontFamily: fonts.baseBold },
   dishKitchen: { fontSize: 11, color: colors.muted, marginTop: 2, fontFamily: fonts.base },
-  dishIncludes: { fontSize: 10, color: colors.muted, marginTop: 2, lineHeight: 14, fontFamily: fonts.base },
+  dishIncludes: { fontSize: 10, color: colors.muted, marginTop: 2, lineHeight: 13, textAlign: 'center', minHeight: 26, fontFamily: fonts.base },
   ratingChip: { backgroundColor: colors.sand, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   ratingChipText: { fontSize: 10, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
   servingChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.forestMist, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
