@@ -47,6 +47,7 @@ import UserDirectChatScreen from './src/components/UserDirectChatScreen';
 import ExpandedHingeProfile from './src/components/ExpandedHingeProfile';
 import AddressBookModal from './src/components/AddressBookModal';
 import PaymentSheetModal from './src/components/PaymentSheetModal';
+import CartBubble from './src/components/CartBubble';
 import OrdersScreen from './src/components/OrdersScreen';
 import OrderTrackingScreen from './src/components/OrderTrackingScreen';
 
@@ -287,6 +288,7 @@ export default function App() {
         if (!mealWindowFilterMatches(item)) continue;
         out.push({
           ...item,
+          desc: item.desc || "",
           kitchenName: kitchen.kitchenName,
           kitchenId: kitchen.id,
           kitchenRating: kitchen.ratingNumber,
@@ -746,10 +748,12 @@ export default function App() {
                           <Text numberOfLines={1} style={styles.dishKitchen}>
                             {dish.kitchenName} · {String(dish.kitchenRegion || '').split(',')[0]}
                           </Text>
+                          {dish.desc ? (
+                            <Text numberOfLines={2} style={styles.dishIncludes}>
+                              {dish.desc}
+                            </Text>
+                          ) : null}
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                            <View style={styles.ratingChip}>
-                              <Text style={styles.ratingChipText}>⭐ {dish.kitchenRating ? dish.kitchenRating.toFixed(1) : '4.8'}</Text>
-                            </View>
                             {dish.isServing ? (
                               <View style={styles.servingChip}>
                                 <View style={styles.servingDot} />
@@ -1075,6 +1079,13 @@ export default function App() {
         onClose={() => setTrackedOrder(null)}
       />
 
+      {/* FLOATING DRAGGABLE CART BUBBLE - tap to open the cart */}
+      <CartBubble
+        count={cartCount}
+        totalRupees={cartTotal}
+        onPress={() => setActiveTab('CART')}
+      />
+
       {/* CLEAN 5-TAB BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('KITCHENS')}>
@@ -1228,6 +1239,7 @@ const styles = StyleSheet.create({
   dishPhotoFallback: { alignItems: 'center', justifyContent: 'center' },
   dishName: { flex: 1, fontSize: 15, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
   dishKitchen: { fontSize: 11, color: colors.muted, marginTop: 2, fontFamily: fonts.base },
+  dishIncludes: { fontSize: 10, color: colors.muted, marginTop: 2, lineHeight: 14, fontFamily: fonts.base },
   ratingChip: { backgroundColor: colors.sand, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   ratingChipText: { fontSize: 10, fontWeight: 'bold', color: colors.dark, fontFamily: fonts.baseBold },
   servingChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.forestMist, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },

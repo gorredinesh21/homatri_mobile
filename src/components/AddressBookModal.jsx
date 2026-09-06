@@ -43,6 +43,25 @@ export default function AddressBookModal({
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  // "My location" - device GPS permission fills lat/lng automatically.
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      Alert.alert("Location", "This device can't share its location.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setForm((prev) => ({
+          ...prev,
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+        }));
+      },
+      () => Alert.alert("Location", "Permission denied - enter the address manually."),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const submit = async () => {
     if (!form.flat_no || !form.street_address || !form.phone) {
       Alert.alert("Address", "Flat no, street address, and phone are required.");
@@ -128,6 +147,22 @@ export default function AddressBookModal({
                   </TouchableOpacity>
                 ))}
               </View>
+              <TouchableOpacity
+                style={{
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: colors.forest,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  alignItems: "center",
+                  backgroundColor: colors.forestMist,
+                }}
+                onPress={useMyLocation}
+              >
+                <Text style={{ color: colors.forest, fontSize: 12, fontWeight: "bold", fontFamily: fonts.baseBold }}>
+                  📍 Use My Current Location
+                </Text>
+              </TouchableOpacity>
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <TextInput value={form.latitude} onChangeText={(v) => setField("latitude", v)} placeholder="Latitude (optional)" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
                 <TextInput value={form.longitude} onChangeText={(v) => setField("longitude", v)} placeholder="Longitude (optional)" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
