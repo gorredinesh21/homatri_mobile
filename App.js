@@ -1085,18 +1085,20 @@ export default function App() {
 
       {/* CLEAN 5-TAB BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
-        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('KITCHENS')}>
-          <Text style={activeTab === 'KITCHENS' ? styles.tabBarActive : styles.tabBarInactive}>🍱 Explore</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('REELS')}>
-          <Text style={activeTab === 'REELS' ? styles.tabBarActive : styles.tabBarInactive}>🎥 Reels</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('ORDERS')}>
-          <Text style={activeTab === 'ORDERS' ? styles.tabBarActive : styles.tabBarInactive}>📦 Orders</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabBarItem} onPress={() => setActiveTab('ACCOUNT')}>
-          <Text style={activeTab === 'ACCOUNT' ? styles.tabBarActive : styles.tabBarInactive}>👤 Account</Text>
-        </TouchableOpacity>
+        {[
+          { id: 'KITCHENS', icon: '🍱', label: 'Explore' },
+          { id: 'REELS', icon: '🎥', label: 'Reels' },
+          { id: 'ORDERS', icon: '📦', label: 'Orders' },
+          { id: 'ACCOUNT', icon: '👤', label: 'Account' },
+        ].map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <TouchableOpacity key={item.id} style={styles.tabBarItem} onPress={() => setActiveTab(item.id)}>
+              <Text style={[styles.tabBarIcon, active && styles.tabBarIconActive]}>{item.icon}</Text>
+              <Text style={[styles.tabBarLabel, active ? styles.tabBarActive : styles.tabBarInactive]}>{item.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </SafeAreaView>
   );
@@ -1204,10 +1206,18 @@ const styles = StyleSheet.create({
   countChipText: { fontSize: 12, fontWeight: 'bold', color: colors.muted, fontFamily: fonts.baseBold },
   countChipTextActive: { color: colors.white },
 
-  bottomTabBar: { flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderColor: colors.border, paddingVertical: 14 },
-  tabBarItem: { flex: 1, alignItems: 'center' },
-  tabBarActive: { color: colors.orange, fontWeight: 'bold', fontSize: 12, fontFamily: fonts.baseBold },
-  tabBarInactive: { color: colors.muted, fontSize: 12, fontFamily: fonts.base },
+  bottomTabBar: {
+    flexDirection: 'row', backgroundColor: colors.white, paddingVertical: 12, paddingHorizontal: 8,
+    marginBottom: 12, marginHorizontal: 10, borderRadius: 26,
+    borderTopWidth: 1, borderColor: colors.border,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10,
+  },
+  tabBarItem: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 6 },
+  tabBarIcon: { fontSize: 26 },
+  tabBarIconActive: { transform: [{ translateY: -1 }] },
+  tabBarLabel: { fontSize: 12 },
+  tabBarActive: { color: colors.orange, fontWeight: 'bold', fontFamily: fonts.baseBold },
+  tabBarInactive: { color: colors.muted, fontFamily: fonts.base },
 
   // ---- WHAT'S COOKING home (reference design) ----
   homeHeadingWrap: { paddingHorizontal: 4, paddingTop: 16, paddingBottom: 4 },
