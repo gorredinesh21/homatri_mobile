@@ -1208,9 +1208,9 @@ const styles = StyleSheet.create({
 
   bottomTabBar: {
     flexDirection: 'row', backgroundColor: colors.white, paddingVertical: 12, paddingHorizontal: 8,
-    marginBottom: 12, marginHorizontal: 10, borderRadius: 26,
+    marginBottom: 20, marginHorizontal: 14, borderRadius: 28,
     borderTopWidth: 1, borderColor: colors.border,
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 14,
   },
   tabBarItem: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 6 },
   tabBarIcon: { fontSize: 26 },
